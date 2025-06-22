@@ -1,4 +1,6 @@
 const EcoleService = require('../services/ecoleService');
+const mongoose = require('mongoose');
+const Ecole = require('../models/Ecole');
 const Enseignant = require('../models/Admin');
 const Apprenant = require('../models/Apprenant');
 const Jeu = require('../models/Jeu');
@@ -144,81 +146,304 @@ const EcoleController = {
         }
     },
 
-     async getStatistiques(req, res) {
+    // Statistiques d'une école spécifique (version améliorée)
+    async getStatistiques(req, res) {
         try {
             const { ecoleId } = req.params;
+            const adminData = {
+                id: req.user.id,
+                role: req.user.role,
+                ecole: req.user.ecole
+            };
 
-            // Vérifier si l'école existe
+            // Vérifier si l'école existe et si l'admin a accès
             if (!ecoleId) {
                 return res.status(400).json({
-                    error: "L'identifiant de l'école est requis"
+                    success: false,
+                    message: "L'identifiant de l'école est requis"
                 });
             }
 
-            // Total jeux de l'école
-            const total_jeux = await Jeu.countDocuments({ ecole: ecoleId });
+            // Vérification des permissions d'accès à l'école
+            if (adminData.role !== 'super_admin') {
+                // Pour un admin normal, vérifier qu'il appartient à cette école
+                if (adminData.ecole && adminData.ecole.toString() !== ecoleId) {
+                    return res.status(403).json({
+                        success: false,
+                        message: "Accès refusé. Vous ne pouvez consulter que les statistiques de votre école."
+                    });
+                }
+            }
 
-            // Total enseignants de l'école
-            const total_enseignants = await Enseignant.countDocuments({
-                ecole: ecoleId,
-                role: 'enseignant'
-            });
+            // Vérifier que l'école existe
+            const ecoleExists = await Ecole.findById(ecoleId);
+            if (!ecoleExists) {
+                return res.status(404).json({
+                    success: false,
+                    message: "École non trouvée"
+                });
+            }
 
-            // Total apprenants de l'école
-            const total_apprenants = await Apprenant.countDocuments({
-                ecole: ecoleId
-            });
+            // Calculer les statistiques en parallèle pour optimiser les performances
+            const [total_apprenants, total_enseignants, total_jeux, total_planifications] = await Promise.all([
+                // Total apprenants de l'école
+                Apprenant.countDocuments({ ecole: ecoleId }),
+                
+                // Total enseignants de l'école (admins et enseignants)
+                Enseignant.countDocuments({
+                    ecole: ecoleId,
+                    role: { $in: ['enseignant', 'admin'] }
+                }),
+                
+                // Total jeux créés pour cette école
+                Jeu.countDocuments({ ecole: ecoleId }),
+                
+                // Total planifications pour les jeux de cette école
+                Planification.aggregate([
+                    {
+                        $lookup: {
+                            from: 'jeus', // Nom de la collection en MongoDB (au pluriel)
+                            localField: 'jeu',
+                            foreignField: '_id',
+                            as: 'jeuInfo'
+                        }
+                    },
+                    {
+                        $match: {
+                            'jeuInfo.ecole': new mongoose.Types.ObjectId(ecoleId)
+                        }
+                    },
+                    {
+                        $count: 'total'
+                    }
+                ]).then(result => result[0]?.total || 0)
+            ]);
 
-            // Total planifications de l'école
-            const total_planifications = await Planification.countDocuments({
-                ecole: ecoleId
-            });
-
-            return res.json({
+            return res.status(200).json({
                 success: true,
+                message: 'Statistiques récupérées avec succès',
                 data: {
-                    total_jeux,
-                    total_enseignants,
-                    total_apprenants,
-                    total_planifications
+                    ecole: {
+                        id: ecoleId,
+                        nom: ecoleExists.libelle,
+                        ville: ecoleExists.ville
+                    },
+                    statistiques: {
+                        total_apprenants,
+                        total_enseignants,
+                        total_jeux,
+                        total_planifications
+                    },
+                    timestamp: new Date().toISOString()
                 }
             });
 
         } catch (error) {
-            console.error('Erreur statistiques :', error);
+            console.error('Erreur lors de la récupération des statistiques :', error);
             return res.status(500).json({
                 success: false,
-                error: "Erreur lors de la récupération des statistiques de l'école."
+                message: "Erreur interne du serveur lors de la récupération des statistiques",
+                error: process.env.NODE_ENV === 'development' ? error.message : undefined
             });
         }
     },
-    
-    async renouvelerAbonnement(req, res) {
-    try {
-      const ecoleId = req.params.id;
-      const { abonnementId, dureeEnJours } = req.body;
 
-      const result = await EcoleService.renouvelerAbonnement(ecoleId, abonnementId, dureeEnJours);
-      return res.status(200).json(result);
-    } catch (err) {
-      return res.status(500).json({
-        success: false,
-        message: err.message
-      });
-    }
-  },
+    // Nouvelle méthode pour récupérer les stats de l'école de l'admin connecté
+    async getMyEcoleStatistiques(req, res) {
+        try {
+            const adminData = {
+                id: req.user.id,
+                role: req.user.role,
+                ecole: req.user.ecole
+            };
+
+            // Vérifier que l'admin a une école associée
+            if (!adminData.ecole) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Aucune école associée à votre compte"
+                });
+            }
+
+            // Rediriger vers la méthode getStatistiques avec l'ID de l'école de l'admin
+            req.params.ecoleId = adminData.ecole.toString();
+            return await EcoleController.getStatistiques(req, res);
+
+        } catch (error) {
+            console.error('Erreur lors de la récupération des statistiques de mon école :', error);
+            return res.status(500).json({
+                success: false,
+                message: "Erreur interne du serveur",
+                error: process.env.NODE_ENV === 'development' ? error.message : undefined
+            });
+        }
+    },
+
+    // Renouveler l'abonnement d'une école
+    async renouvelerAbonnement(req, res) {
+        try {
+            const ecoleId = req.params.id;
+            const { abonnementId, dureeEnJours } = req.body;
+
+            const result = await EcoleService.renouvelerAbonnement(ecoleId, abonnementId, dureeEnJours);
+            return res.status(200).json(result);
+        } catch (err) {
+            return res.status(500).json({
+                success: false,
+                message: err.message
+            });
+        }
+    },
+
+    // Annuler l'abonnement d'une école
     async annulerAbonnement(req, res) {
-    try {
-      const ecoleId = req.params.id;
-      const result = await EcoleService.annulerAbonnement(ecoleId);
-      return res.status(200).json(result);
-    } catch (err) {
-      return res.status(500).json({
-        success: false,
-        message: err.message
-      });
+        try {
+            const ecoleId = req.params.id;
+            const result = await EcoleService.annulerAbonnement(ecoleId);
+            return res.status(200).json(result);
+        } catch (err) {
+            return res.status(500).json({
+                success: false,
+                message: err.message
+            });
+        }
+    },
+
+    // Méthode utilitaire pour obtenir des statistiques détaillées
+    async getStatistiquesDetaillees(req, res) {
+        try {
+            const { ecoleId } = req.params;
+            const adminData = {
+                id: req.user.id,
+                role: req.user.role,
+                ecole: req.user.ecole
+            };
+
+            // Vérifications de sécurité
+            if (!ecoleId) {
+                return res.status(400).json({
+                    success: false,
+                    message: "L'identifiant de l'école est requis"
+                });
+            }
+
+            if (adminData.role !== 'super_admin' && adminData.ecole?.toString() !== ecoleId) {
+                return res.status(403).json({
+                    success: false,
+                    message: "Accès refusé"
+                });
+            }
+
+            // Récupérer les statistiques détaillées
+            const [
+                ecoleInfo,
+                apprenants,
+                enseignants,
+                jeux,
+                planifications,
+                participationsActives
+            ] = await Promise.all([
+                // Informations de l'école
+                Ecole.findById(ecoleId).populate('pays'),
+                
+                // Détails des apprenants
+                Apprenant.find({ ecole: ecoleId }).select('nom prenom matricule date'),
+                
+                // Détails des enseignants
+                Enseignant.find({ 
+                    ecole: ecoleId, 
+                    role: { $in: ['enseignant', 'admin'] } 
+                }).select('nom prenom email role'),
+                
+                // Détails des jeux
+                Jeu.find({ ecole: ecoleId }).select('titre date').populate('createdBy', 'nom prenom'),
+                
+                // Détails des planifications
+                Planification.aggregate([
+                    {
+                        $lookup: {
+                            from: 'jeus',
+                            localField: 'jeu',
+                            foreignField: '_id',
+                            as: 'jeuInfo'
+                        }
+                    },
+                    {
+                        $match: {
+                            'jeuInfo.ecole': new mongoose.Types.ObjectId(ecoleId)
+                        }
+                    },
+                    {
+                        $project: {
+                            pin: 1,
+                            statut: 1,
+                            type: 1,
+                            date_debut: 1,
+                            date_fin: 1,
+                            limite_participant: 1,
+                            participants: 1,
+                            'jeuInfo.titre': 1
+                        }
+                    }
+                ]),
+                
+                // Participations actives (planifications en cours)
+                Planification.countDocuments({
+                    statut: 'en cours'
+                })
+            ]);
+
+            if (!ecoleInfo) {
+                return res.status(404).json({
+                    success: false,
+                    message: "École non trouvée"
+                });
+            }
+
+            return res.status(200).json({
+                success: true,
+                message: 'Statistiques détaillées récupérées avec succès',
+                data: {
+                    ecole: {
+                        id: ecoleId,
+                        nom: ecoleInfo.libelle,
+                        ville: ecoleInfo.ville,
+                        adresse: ecoleInfo.adresse,
+                        telephone: ecoleInfo.telephone,
+                        email: ecoleInfo.email,
+                        pays: ecoleInfo.pays?.libelle
+                    },
+                    statistiques: {
+                        resume: {
+                            total_apprenants: apprenants.length,
+                            total_enseignants: enseignants.length,
+                            total_jeux: jeux.length,
+                            total_planifications: planifications.length,
+                            participations_actives: participationsActives
+                        },
+                        details: {
+                            apprenants_recents: apprenants
+                                .sort((a, b) => new Date(b.date) - new Date(a.date))
+                                .slice(0, 5),
+                            jeux_recents: jeux
+                                .sort((a, b) => new Date(b.date) - new Date(a.date))
+                                .slice(0, 5),
+                            planifications_actives: planifications.filter(p => p.statut === 'en cours')
+                        }
+                    },
+                    timestamp: new Date().toISOString()
+                }
+            });
+
+        } catch (error) {
+            console.error('Erreur lors de la récupération des statistiques détaillées :', error);
+            return res.status(500).json({
+                success: false,
+                message: "Erreur interne du serveur",
+                error: process.env.NODE_ENV === 'development' ? error.message : undefined
+            });
+        }
     }
-  },
 };
 
 module.exports = EcoleController;

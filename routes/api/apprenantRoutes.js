@@ -13,7 +13,8 @@ router.post('/add-apprenant', apprenantController.addExistingApprenantToJeu);
 
 router.post('/apprenant/matricule', apprenantController.getApprenantByMatricule);
 
-router.post('/apprenant', checkRequiredFields(['nom', 'avatar', 'ecole', 'prenom', 'phone']), apprenantController.createApprenant);
+// ✨ Suppression de 'phone' des champs requis - maintenant optionnel
+router.post('/apprenant', checkRequiredFields(['nom', 'avatar', 'ecole', 'prenom']), apprenantController.createApprenant);
 
 router.put('/apprenant/update/:id', authenticateToken, apprenantController.updateApprenant);
 
@@ -22,6 +23,5 @@ router.delete('/apprenant/delete/:id', authenticateToken, apprenantController.de
 router.get('/apprenant/:id', apprenantController.getApprenantById);
 
 router.get('/apprenant', apprenantController.getApprenants);
-
 
 module.exports = router;

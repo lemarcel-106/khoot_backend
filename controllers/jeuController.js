@@ -10,7 +10,6 @@ exports.getAllJeux = async (req, res) => {
             nom: req.user.nom,
             ecole: req.user.ecole,
         };
-        // console.log("adminData")
 
         const jeux = await jeuService.getAllJeu(adminData);
 
@@ -31,19 +30,24 @@ exports.getAllJeux = async (req, res) => {
 exports.createJeu = async (req, res) => {
     try {
         const { titre } = req.body;
-        logger.info('Creation de mon jeu ah ah ah', req.user);
+        logger.info('Creation de mon jeu', req.user);
         console.log('MongoDB est connecté à Atlas creation du jeu');
 
-        if (!req.file) {
-            return res.status(400).json({ message: 'Aucune image envoyée.' });
-        }
         const createdBy = req.user.id;
 
         const jeuData = {
             titre,
-            image: req.file.path,
-            createdBy
+            createdBy,
+            ecole: req.user.ecole // Ajout de l'école depuis les données utilisateur
         };
+
+        // Ajout conditionnel de l'image si elle est fournie
+        if (req.file) {
+            jeuData.image = req.file.path;
+            logger.info('Image ajoutée au jeu:', req.file.path);
+        } else {
+            logger.info('Jeu créé sans image');
+        }
 
         // Crée le jeu via le service jeuService
         const { message, statut, savedJeu } = await jeuService.createJeu(jeuData);
@@ -88,11 +92,16 @@ exports.getJeuById = async (req, res) => {
     }
 };
 
-
 exports.updateJeu = async (req, res) => {
     try {
         const jeuId = req.params.id;
         const jeuData = req.body;
+        
+        // Si une nouvelle image est fournie, l'ajouter aux données
+        if (req.file) {
+            jeuData.image = req.file.path;
+        }
+        
         const updatedJeu = await jeuService.updateJeu(jeuId, jeuData);
         res.status(200).json({
             success: true,
@@ -124,4 +133,3 @@ exports.deleteJeuById = async (req, res) => {
         });
     }
 }
-

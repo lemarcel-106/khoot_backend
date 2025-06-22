@@ -23,7 +23,9 @@ const EcoleSchema = new mongoose.Schema({
   email: { type: String, unique: true },
   fichier: { type: String },
 
-  admin: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin' },
+  // SUPPRESSION : admin n'est plus référencé dans l'école
+  // admin: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin' },
+  
   pays: { type: mongoose.Schema.Types.ObjectId, ref: 'Pays' },
   apprenants: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Apprenant' }],
 

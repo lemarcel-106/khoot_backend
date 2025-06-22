@@ -4,18 +4,21 @@ const { generateUniqueMatricule }  = require('../utils/generateUniqueMatricule')
 
 const apprenantService = {
 
-    getAllParticipantService: async (adminData = nul) => {
+    getAllParticipantService: async (adminData = null) => {
         try {
             let query = Apprenant.find();
 
-            // Si un admin est fourni et qu'il n'est pas super_admin, on filtre par admin
-            if (adminData && adminData.ecole !== 'super_admin') {
-                query = query.where('ecole').equals(adminData.ecole);
+            // MODIFICATION : Si un admin est fourni et qu'il n'est pas super_admin, on filtre par son école
+            if (adminData && adminData.role !== 'super_admin') {
+                if (adminData.ecole) {
+                    query = query.where('ecole').equals(adminData.ecole);
+                } else {
+                    throw new Error("L'administrateur ne possède pas d'école liée.");
+                }
             }
             return await query
                 .populate('ecole', 'libelle ville telephone')
                 .exec();
-            // return participants;
         } catch (error) {
             throw new Error('Erreur lors de la récupération des apprenants');
         }
@@ -62,13 +65,12 @@ const apprenantService = {
 
     getParticipantByMatricule: async (matricule) => {
         try {
-            // return await Apprenant.findOne({ matricule })
             const user = await Apprenant.findOne({matricule})
                 .populate('ecole', 'libelle ville telephone')
                 .exec();
             return user
         } catch (error) {
-            throw new Error('Erreur lors de la récupération de l\'utilisateur par matricule ah ah oh');
+            throw new Error('Erreur lors de la récupération de l\'utilisateur par matricule');
         }
     },
 
@@ -127,6 +129,5 @@ const apprenantService = {
         }
     }
 };
-
 
 module.exports = apprenantService;

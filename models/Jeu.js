@@ -7,7 +7,8 @@ const JeuSchema = new mongoose.Schema({
     },
     image: {
         type: String,
-        required: false
+        required: false, // Image maintenant optionnelle
+        default: null    // Valeur par défaut null
     },
     createdBy: {
         type: mongoose.Schema.Types.ObjectId,

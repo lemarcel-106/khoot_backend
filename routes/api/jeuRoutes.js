@@ -12,15 +12,24 @@ router.use(requireEcoleAccess);
 
 router.get('/jeux', jeuController.getAllJeux);
 
-router.post('/jeux',authenticateToken, uploadImage.single('image'), checkRequiredFields(['titre']), jeuController.createJeu);
+// Route modifiée : image devient optionnelle, seul le titre est requis
+router.post('/jeux', 
+    authenticateToken, 
+    uploadImage.single('image'), // Image optionnelle
+    checkRequiredFields(['titre']), // Seul le titre est obligatoire
+    jeuController.createJeu
+);
 
-router.put('/jeux/update/:id', jeuController.updateJeu);
+// Route de mise à jour avec image optionnelle
+router.put('/jeux/update/:id', 
+    uploadImage.single('image'), // Image optionnelle pour la mise à jour aussi
+    jeuController.updateJeu
+);
 
 router.delete('/jeux/delete/:id', jeuController.deleteJeuById);
 
 router.get('/jeux/:id', jeuController.getJeuById);
 
 router.post('/jeux/pin', jeuController.getJeuDetailsByPin);
-
 
 module.exports = router;

@@ -4,7 +4,6 @@ const userService = require('./userService')
 const Participant = require('../models/Participant');
 const logger = require('../logger');
 
-
 const jeuService = {
 
     getAllJeuSansDetails: async () => {
@@ -23,15 +22,14 @@ const jeuService = {
 
     getAllJeu: async (adminData = null) => {
         try {
-
             let query = Jeu.find();
             logger.info(adminData);
-            // console.log(adminData) //new ObjectId('670e66283996da36c7cfe378')
+
             // Si un admin est fourni et qu'il n'est pas super_admin, on filtre par école
             if (adminData && adminData.role !== 'super_admin') {
                 if (adminData.ecole) {
                     query = query.where('ecole').equals(adminData.ecole.toString());
-                    console.log("moi avec toi et autres",query)
+                    console.log("moi avec toi et autres", query)
                     logger.info(query);
                 } else {
                     throw new Error("L'administrateur ne possède pas d'école liée.");
@@ -51,13 +49,11 @@ const jeuService = {
                         populate: [
                             {
                                 path: 'apprenant',
-                                //   select: 'name email age',
                             },
                             {
                                 path: 'reponses',
                                 populate: {
                                     path: 'question',
-                                    // select: 'text'  // Par exemple, on récupère le texte de la question
                                 }
                             }
                         ]
@@ -71,12 +67,46 @@ const jeuService = {
     createJeu: async (jeuData) => {
         try {
             logger.info('Creation de mon jeu');
-            const newJeu = new Jeu(jeuData)
-            const savedJeu = await newJeu.save()
-            return { savedJeu, message: 'Jeu créé avec succès', statut: 200 };
+            
+            // Validation des données obligatoires
+            if (!jeuData.titre) {
+                throw new Error('Le titre du jeu est obligatoire');
+            }
+            
+            if (!jeuData.createdBy) {
+                throw new Error('L\'ID du créateur est obligatoire');
+            }
+            
+            if (!jeuData.ecole) {
+                throw new Error('L\'école est obligatoire');
+            }
+            
+            // Création du jeu avec données validées
+            const jeuToCreate = {
+                titre: jeuData.titre,
+                createdBy: jeuData.createdBy,
+                ecole: jeuData.ecole
+            };
+            
+            // Ajout conditionnel de l'image
+            if (jeuData.image) {
+                jeuToCreate.image = jeuData.image;
+                logger.info('Image ajoutée au jeu:', jeuData.image);
+            } else {
+                logger.info('Jeu créé sans image');
+            }
+            
+            const newJeu = new Jeu(jeuToCreate);
+            const savedJeu = await newJeu.save();
+            
+            return { 
+                savedJeu, 
+                message: 'Jeu créé avec succès', 
+                statut: 200 
+            };
         } catch (error) {
-            console.error(error);
-            res.status(500).json({ message: "Erreur lors de la création du jeu" });
+            logger.error('Erreur lors de la création du jeu:', error);
+            throw new Error('Erreur lors de la création du jeu : ' + error.message);
         }
     },
 
@@ -102,34 +132,30 @@ const jeuService = {
         try {
             const jeu = await Jeu.findById(id)
                 .populate('createdBy', 'name email')
-            .populate({
-                path: 'questions',
-                populate: [
-                    {
-                        path: 'reponses',
-                        // select: 'texte estCorrect'
-                    },
-                    {
-                        path: 'typeQuestion',
-                        // select: 'nom'
-                    },
-                    {
-                        path: 'point',
-                        // select: 'valeur'
-                    }
-                ]
-            })
-            .populate({
-                path: 'planification',
-                populate: {
-                    path: 'participants',
+                .populate({
+                    path: 'questions',
+                    populate: [
+                        {
+                            path: 'reponses',
+                        },
+                        {
+                            path: 'typeQuestion',
+                        },
+                        {
+                            path: 'point',
+                        }
+                    ]
+                })
+                .populate({
+                    path: 'planification',
                     populate: {
-                        path: 'apprenant',
-                        // select: 'nom avatar score'
+                        path: 'participants',
+                        populate: {
+                            path: 'apprenant',
+                        }
                     }
-                }
-            })
-            .exec();
+                })
+                .exec();
     
             if (!jeu) {
                 throw new Error(`Aucun jeu trouvé avec l'ID ${id}`);
@@ -161,14 +187,41 @@ const jeuService = {
 
     updateJeu: async (jeuId, jeuData) => {
         try {
+            // Validation de l'ID
+            if (!jeuId) {
+                throw new Error("L'ID du jeu est requis");
+            }
+            
+            // Préparation des données à mettre à jour
+            const updateData = {};
+            
+            // Mise à jour conditionnelle des champs
+            if (jeuData.titre) {
+                updateData.titre = jeuData.titre;
+            }
+            
+            if (jeuData.image) {
+                updateData.image = jeuData.image;
+                logger.info('Nouvelle image ajoutée lors de la mise à jour:', jeuData.image);
+            }
+            
+            // Si d'autres champs sont fournis, les ajouter
+            Object.keys(jeuData).forEach(key => {
+                if (key !== 'titre' && key !== 'image' && jeuData[key] !== undefined) {
+                    updateData[key] = jeuData[key];
+                }
+            });
+            
             const updatedJeu = await Jeu.findByIdAndUpdate(
                 jeuId,
-                { $set: jeuData },
+                { $set: updateData },
                 { new: true, runValidators: true }
             );
+            
             if (!updatedJeu) {
                 throw new Error("Jeu non trouvé");
             }
+            
             return updatedJeu;
         } catch (error) {
             throw new Error("Erreur lors de la mise à jour du jeu : " + error.message);
@@ -186,28 +239,6 @@ const jeuService = {
             throw new Error("Erreur lors de la suppression du jeu : " + error.message);
         }
     }
-
-    // createJeu: async (req, res) => {
-    //     try {
-    //         const token = req.headers.authorization.split(' ')[1];
-    //         const userId = tokenUtils.decodedToken(token)
-    //         console.log("userId")
-    //         const user = userService.getUserById(userId);
-    //         if (!user) {
-    //             return res.status(404).json({ message: "Utilisateur non trouvé" });
-    //         }
-    //         const newJeu = new Jeu({
-    //             titre: req.body.titre,
-    //             image: req.body.image,
-    //             createdBy: userId
-    //         });
-    //         const savedJeu = await newJeu.save();
-    //         return { savedJeu, message: 'Jeu créé avec succès', statut: 200 };
-    //     } catch (error) {
-    //         console.error(error);
-    //         res.status(500).json({ message: "Erreur lors de la création du jeu" });
-    //     }
-    // },
 };
 
 module.exports = jeuService;
