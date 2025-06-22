@@ -141,3 +141,4 @@
 {"level":"error","message":"HTTP Error: 2025-06-22T16:21:25.376Z [ERROR] GET /api/mon-ecole/statistiques 403 - 104 bytes - IP: ::1 - User-Agent: PostmanRuntime/7.44.0","timestamp":"2025-06-22T16:21:25.376Z"}
 {"level":"error","message":"HTTP Error: 2025-06-22T16:21:28.299Z [ERROR] GET /api/mon-ecole/statistiques 403 - 104 bytes - IP: ::1 - User-Agent: PostmanRuntime/7.44.0","timestamp":"2025-06-22T16:21:28.299Z"}
 {"level":"error","message":"HTTP Error: 2025-06-22T16:23:09.064Z [ERROR] POST /api/jeux 400 - 36 bytes - IP: ::1 - User-Agent: PostmanRuntime/7.44.0","timestamp":"2025-06-22T16:23:09.064Z"}
+{"level":"error","message":"HTTP Error: 2025-06-22T16:56:40.084Z [ERROR] POST /api/questions 500 - 284 bytes - IP: ::1 - User-Agent: PostmanRuntime/7.44.0","timestamp":"2025-06-22T16:56:40.084Z"}

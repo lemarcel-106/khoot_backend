@@ -6,42 +6,62 @@ const logger = require('../logger');
 
 const jeuService = {
 
-    getAllJeuSansDetails: async () => {
-        try {
-            return await Jeu.find();
-        } catch (error) {
-            if (error.code === 11000) {
-                // Récupère le nom du champ qui a causé l'erreur de duplication
-                const field = Object.keys(error.keyValue)[0];
-                throw new Error(`Le champ '${field}' existe déjà.`);
-            } else {
-                throw new Error('Erreur lors de la création du jeu : ' + error.message);
-            }
-        }
-    },
-
-    getAllJeu: async (adminData = null) => {
+    /**
+     * Récupère tous les jeux avec détails de base seulement (titre, image, date, id)
+     * Utilisé pour afficher une liste rapide des jeux
+     */
+    getAllJeuxSimple: async (adminData = null) => {
         try {
             let query = Jeu.find();
-            logger.info(adminData);
+            logger.info('Récupération simple des jeux pour:', adminData);
 
             // Si un admin est fourni et qu'il n'est pas super_admin, on filtre par école
             if (adminData && adminData.role !== 'super_admin') {
                 if (adminData.ecole) {
                     query = query.where('ecole').equals(adminData.ecole.toString());
-                    console.log("moi avec toi et autres", query)
-                    logger.info(query);
+                    logger.info('Filtrage par école:', adminData.ecole);
                 } else {
                     throw new Error("L'administrateur ne possède pas d'école liée.");
                 }
+            }
+            
+            // Sélection des champs de base uniquement
+            return await query
+                .select('titre image date createdBy ecole')
+                .populate('createdBy', 'nom prenom email')
+                .populate('ecole', 'libelle ville')
+                .sort({ date: -1 }) // Tri par date décroissante
+                .exec();
+                
+        } catch (error) {
+            logger.error('Erreur lors de la récupération simple des jeux:', error);
+            throw new Error('Erreur lors de la récupération des jeux : ' + error.message);
+        }
+    },
 
-                console.log('Requête filtrée par école :', query.getFilter());
+    /**
+     * Récupère tous les jeux avec tous les détails (questions, planifications, participants, etc.)
+     * Utilisé pour l'administration et la gestion complète
+     */
+    getAllJeuxDetailles: async (adminData = null) => {
+        try {
+            let query = Jeu.find();
+            logger.info('Récupération détaillée des jeux pour:', adminData);
+
+            // Si un admin est fourni et qu'il n'est pas super_admin, on filtre par école
+            if (adminData && adminData.role !== 'super_admin') {
+                if (adminData.ecole) {
+                    query = query.where('ecole').equals(adminData.ecole.toString());
+                    logger.info('Filtrage par école:', adminData.ecole);
+                } else {
+                    throw new Error("L'administrateur ne possède pas d'école liée.");
+                }
             }
             
             return await query
-                .populate('createdBy')
+                .populate('createdBy', 'nom prenom email')
                 .populate('questions')
-                .populate('ecole')
+                .populate('ecole', 'libelle ville telephone')
                 .populate({
                     path: 'planification',
                     populate: {
@@ -58,9 +78,39 @@ const jeuService = {
                             }
                         ]
                     }
-                });
+                })
+                .sort({ date: -1 }) // Tri par date décroissante
+                .exec();
+                
         } catch (error) {
-            throw new Error('Erreur lors de la récupération des jeux avec détails');
+            logger.error('Erreur lors de la récupération détaillée des jeux:', error);
+            throw new Error('Erreur lors de la récupération des jeux avec détails : ' + error.message);
+        }
+    },
+
+    /**
+     * Ancien méthode conservée pour compatibilité
+     * @deprecated Utiliser getAllJeuxDetailles à la place
+     */
+    getAllJeu: async (adminData = null) => {
+        logger.warn('Méthode getAllJeu dépréciée, utiliser getAllJeuxDetailles');
+        return await jeuService.getAllJeuxDetailles(adminData);
+    },
+
+    getAllJeuSansDetails: async () => {
+        try {
+            return await Jeu.find()
+                .select('titre image date createdBy ecole')
+                .populate('createdBy', 'nom prenom email')
+                .populate('ecole', 'libelle ville')
+                .sort({ date: -1 });
+        } catch (error) {
+            if (error.code === 11000) {
+                const field = Object.keys(error.keyValue)[0];
+                throw new Error(`Le champ '${field}' existe déjà.`);
+            } else {
+                throw new Error('Erreur lors de la récupération des jeux : ' + error.message);
+            }
         }
     },
 
@@ -131,7 +181,7 @@ const jeuService = {
     getJeuById: async (id) => {
         try {
             const jeu = await Jeu.findById(id)
-                .populate('createdBy', 'name email')
+                .populate('createdBy', 'nom prenom email')
                 .populate({
                     path: 'questions',
                     populate: [
@@ -155,6 +205,7 @@ const jeuService = {
                         }
                     }
                 })
+                .populate('ecole', 'libelle ville telephone')
                 .exec();
     
             if (!jeu) {
@@ -170,7 +221,7 @@ const jeuService = {
     getJeuByPin: async (pin) => {
         try {
             const jeu = await Jeu.findOne({ pin: pin })
-                .populate('createdBy', 'name email')
+                .populate('createdBy', 'nom prenom email')
                 .populate('participants', 'nom avatar score')
                 .populate('questions')
                 .exec();
