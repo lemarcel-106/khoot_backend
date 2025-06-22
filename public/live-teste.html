@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Socket.IO - Jeu en temps réel</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        .section {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .full-width {
+            grid-column: 1 / -1;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            font-weight: bold;
+        }
+        .connected { background: #d4edda; color: #155724; }
+        .disconnected { background: #f8d7da; color: #721c24; }
+        input, button, textarea {
+            padding: 8px 12px;
+            margin: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            cursor: pointer;
+            border: none;
+        }
+        button:hover { background: #0056b3; }
+        button:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+        .log {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .log-entry {
+            margin-bottom: 5px;
+            padding: 2px 0;
+        }
+        .log-success { color: #28a745; }
+        .log-error { color: #dc3545; }
+        .log-info { color: #17a2b8; }
+        .participants-list, .scores-list {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            min-height: 100px;
+        }
+        .message {
+            background: #e9ecef;
+            padding: 8px;
+            margin: 5px 0;
+            border-radius: 4px;
+            border-left: 3px solid #007bff;
+        }
+        .answer-item {
+            background: #fff3cd;
+            padding: 8px;
+            margin: 5px 0;
+            border-radius: 4px;
+            border-left: 3px solid #ffc107;
+        }
+        .answer-correct { border-left-color: #28a745; background: #d4edda; }
+        .answer-incorrect { border-left-color: #dc3545; background: #f8d7da; }
+    </style>
+</head>
+<body>
+    <h1>🎮 Test Socket.IO - Jeu en temps réel</h1>
+    
+    <div id="status" class="status disconnected">
+        ❌ Déconnecté
+    </div>
+
+    <div class="container">
+        <!-- Connexion -->
+        <div class="section">
+            <h3>🔌 Connexion</h3>
+            <input type="text" id="serverUrl" placeholder="URL du serveur" value="http://localhost:3000">
+            <input type="text" id="authToken" placeholder="Token d'authentification" value="test-token">
+            <br>
+            <button id="connectBtn">Se connecter</button>
+            <button id="disconnectBtn" disabled>Se déconnecter</button>
+        </div>
+
+        <!-- Jeu -->
+        <div class="section">
+            <h3>🎲 Jeu</h3>
+            <input type="text" id="gameId" placeholder="ID du jeu" value="game-123">
+            <input type="text" id="userId" placeholder="Votre ID utilisateur" value="user-1">
+            <br>
+            <button id="joinGameBtn" disabled>Rejoindre le jeu</button>
+            <button id="leaveGameBtn" disabled>Quitter le jeu</button>
+        </div>
+
+        <!-- Participants -->
+        <div class="section">
+            <h3>👥 Participants</h3>
+            <div id="participantsList" class="participants-list">
+                Aucun participant connecté
+            </div>
+        </div>
+
+        <!-- Scores -->
+        <div class="section">
+            <h3>🏆 Scores</h3>
+            <div id="scoresList" class="scores-list">
+                Aucun score disponible
+            </div>
+            <br>
+            <input type="number" id="scorePoints" placeholder="Points" value="10">
+            <button id="updateScoreBtn" disabled>Mettre à jour le score</button>
+        </div>
+
+        <!-- Réponses -->
+        <div class="section">
+            <h3>💡 Réponses</h3>
+            <input type="text" id="answerText" placeholder="Votre réponse">
+            <button id="sendAnswerBtn" disabled>Envoyer réponse</button>
+            <div id="answersList"></div>
+        </div>
+
+        <!-- Chat -->
+        <div class="section">
+            <h3>💬 Chat</h3>
+            <div id="chatMessages" style="height: 200px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; margin-bottom: 10px;"></div>
+            <input type="text" id="messageText" placeholder="Tapez votre message">
+            <button id="sendMessageBtn" disabled>Envoyer</button>
+            <br>
+            <small>
+                <button id="startTypingBtn" disabled>Commencer à taper</button>
+                <button id="stopTypingBtn" disabled>Arrêter de taper</button>
+            </small>
+        </div>
+
+        <!-- Logs -->
+        <div class="section full-width">
+            <h3>📋 Logs des événements</h3>
+            <button onclick="clearLogs()">Effacer les logs</button>
+            <div id="logs" class="log"></div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+    <script>
+        let socket = null;
+        let currentGameId = null;
+        let currentUserId = null;
+
+        // Éléments DOM
+        const statusEl = document.getElementById('status');
+        const connectBtn = document.getElementById('connectBtn');
+        const disconnectBtn = document.getElementById('disconnectBtn');
+        const joinGameBtn = document.getElementById('joinGameBtn');
+        const leaveGameBtn = document.getElementById('leaveGameBtn');
+        const sendAnswerBtn = document.getElementById('sendAnswerBtn');
+        const sendMessageBtn = document.getElementById('sendMessageBtn');
+        const updateScoreBtn = document.getElementById('updateScoreBtn');
+        const startTypingBtn = document.getElementById('startTypingBtn');
+        const stopTypingBtn = document.getElementById('stopTypingBtn');
+
+        // Fonction de logging
+        function log(message, type = 'info') {
+            const logsEl = document.getElementById('logs');
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.className = `log-entry log-${type}`;
+            logEntry.innerHTML = `[${timestamp}] ${message}`;
+            logsEl.appendChild(logEntry);
+            logsEl.scrollTop = logsEl.scrollHeight;
+        }
+
+        function clearLogs() {
+            document.getElementById('logs').innerHTML = '';
+        }
+
+        // Connexion
+        connectBtn.addEventListener('click', () => {
+            const serverUrl = document.getElementById('serverUrl').value;
+            const authToken = document.getElementById('authToken').value;
+
+            socket = io(serverUrl, {
+                auth: {
+                    token: authToken
+                }
+            });
+
+            // Événements de connexion
+            socket.on('connect', () => {
+                statusEl.textContent = '✅ Connecté';
+                statusEl.className = 'status connected';
+                connectBtn.disabled = true;
+                disconnectBtn.disabled = false;
+                joinGameBtn.disabled = false;
+                log('Connexion réussie !', 'success');
+            });
+
+            socket.on('disconnect', () => {
+                statusEl.textContent = '❌ Déconnecté';
+                statusEl.className = 'status disconnected';
+                connectBtn.disabled = false;
+                disconnectBtn.disabled = true;
+                joinGameBtn.disabled = true;
+                leaveGameBtn.disabled = true;
+                sendAnswerBtn.disabled = true;
+                sendMessageBtn.disabled = true;
+                updateScoreBtn.disabled = true;
+                startTypingBtn.disabled = true;
+                stopTypingBtn.disabled = true;
+                log('Déconnexion', 'error');
+            });
+
+            socket.on('connect_error', (error) => {
+                log(`Erreur de connexion: ${error.message}`, 'error');
+            });
+
+            // Événements du jeu
+            socket.on('participantsList', (participants) => {
+                const participantsEl = document.getElementById('participantsList');
+                if (participants.length > 0) {
+                    participantsEl.innerHTML = participants.map(([socketId, data]) => 
+                        `<div>Socket: ${socketId} | User: ${data.userId || 'N/A'}</div>`
+                    ).join('');
+                } else {
+                    participantsEl.innerHTML = 'Aucun participant';
+                }
+                log(`Participants mis à jour: ${participants.length}`, 'info');
+            });
+
+            socket.on('scoresList', (scores) => {
+                const scoresEl = document.getElementById('scoresList');
+                if (scores.length > 0) {
+                    scoresEl.innerHTML = scores.map(([userId, score]) => 
+                        `<div>${userId}: ${score} points</div>`
+                    ).join('');
+                } else {
+                    scoresEl.innerHTML = 'Aucun score';
+                }
+                log(`Scores mis à jour: ${scores.length}`, 'info');
+            });
+
+            socket.on('answersList', (answers) => {
+                const answersEl = document.getElementById('answersList');
+                if (answers.length > 0) {
+                    answersEl.innerHTML = answers.map(([id, answer]) => 
+                        `<div class="answer-item answer-${answer.status}">
+                            ${answer.userId}: ${answer.answer} (${answer.status})
+                        </div>`
+                    ).join('');
+                } else {
+                    answersEl.innerHTML = 'Aucune réponse';
+                }
+                log(`Réponses mises à jour: ${answers.length}`, 'info');
+            });
+
+            socket.on('newMessage', (message) => {
+                const chatEl = document.getElementById('chatMessages');
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'message';
+                messageDiv.innerHTML = `<strong>${message.userId}:</strong> ${message.content}`;
+                chatEl.appendChild(messageDiv);
+                chatEl.scrollTop = chatEl.scrollHeight;
+                log(`Nouveau message de ${message.userId}`, 'info');
+            });
+
+            socket.on('userJoined', (data) => {
+                log(`${data.userId} a rejoint le jeu`, 'success');
+            });
+
+            socket.on('userLeft', (data) => {
+                log(`${data.userId} a quitté le jeu`, 'info');
+            });
+
+            socket.on('userTyping', (data) => {
+                log(`${data.userId} est en train de taper...`, 'info');
+            });
+
+            socket.on('userStoppedTyping', (data) => {
+                log(`${data.userId} a arrêté de taper`, 'info');
+            });
+
+            socket.on('scoreUpdated', (data) => {
+                log(`Score mis à jour: ${data.userId} +${data.score} (Total: ${data.totalScore})`, 'success');
+            });
+
+            socket.on('newAnswer', (answer) => {
+                log(`Nouvelle réponse de ${answer.userId}: ${answer.answer}`, 'info');
+            });
+
+            socket.on('answerValidated', (data) => {
+                log(`Réponse ${data.answerId} validée: ${data.isCorrect ? 'Correcte' : 'Incorrecte'}`, data.isCorrect ? 'success' : 'error');
+            });
+        });
+
+        // Déconnexion
+        disconnectBtn.addEventListener('click', () => {
+            if (socket) {
+                socket.disconnect();
+            }
+        });
+
+        // Rejoindre le jeu
+        joinGameBtn.addEventListener('click', () => {
+            currentGameId = document.getElementById('gameId').value;
+            currentUserId = document.getElementById('userId').value;
+            
+            if (socket && currentGameId) {
+                socket.userId = currentUserId; // Simuler l'ID utilisateur
+                socket.emit('joinGame', currentGameId);
+                joinGameBtn.disabled = true;
+                leaveGameBtn.disabled = false;
+                sendAnswerBtn.disabled = false;
+                sendMessageBtn.disabled = false;
+                updateScoreBtn.disabled = false;
+                startTypingBtn.disabled = false;
+                stopTypingBtn.disabled = false;
+                log(`Tentative de rejoindre le jeu: ${currentGameId}`, 'info');
+            }
+        });
+
+        // Quitter le jeu
+        leaveGameBtn.addEventListener('click', () => {
+            if (socket && currentGameId) {
+                socket.emit('leaveGame', currentGameId);
+                joinGameBtn.disabled = false;
+                leaveGameBtn.disabled = true;
+                sendAnswerBtn.disabled = true;
+                sendMessageBtn.disabled = true;
+                updateScoreBtn.disabled = true;
+                startTypingBtn.disabled = true;
+                stopTypingBtn.disabled = true;
+                log(`Quitter le jeu: ${currentGameId}`, 'info');
+            }
+        });
+
+        // Envoyer une réponse
+        sendAnswerBtn.addEventListener('click', () => {
+            const answerText = document.getElementById('answerText').value;
+            if (socket && currentGameId && answerText) {
+                socket.emit('sendAnswer', {
+                    gameId: currentGameId,
+                    answer: answerText
+                });
+                document.getElementById('answerText').value = '';
+                log(`Réponse envoyée: ${answerText}`, 'info');
+            }
+        });
+
+        // Envoyer un message
+        sendMessageBtn.addEventListener('click', () => {
+            const messageText = document.getElementById('messageText').value;
+            if (socket && currentGameId && messageText) {
+                socket.emit('sendMessage', {
+                    gameId: currentGameId,
+                    content: messageText
+                });
+                document.getElementById('messageText').value = '';
+                log(`Message envoyé: ${messageText}`, 'info');
+            }
+        });
+
+        // Mettre à jour le score
+        updateScoreBtn.addEventListener('click', () => {
+            const scorePoints = parseInt(document.getElementById('scorePoints').value);
+            if (socket && currentGameId && currentUserId && scorePoints) {
+                socket.emit('updateScore', {
+                    gameId: currentGameId,
+                    userId: currentUserId,
+                    score: scorePoints
+                });
+                log(`Mise à jour du score: +${scorePoints}`, 'info');
+            }
+        });
+
+        // Indicateurs de frappe
+        startTypingBtn.addEventListener('click', () => {
+            if (socket && currentGameId && currentUserId) {
+                socket.emit('typing', {
+                    gameId: currentGameId,
+                    userId: currentUserId
+                });
+                log('Indicateur de frappe activé', 'info');
+            }
+        });
+
+        stopTypingBtn.addEventListener('click', () => {
+            if (socket && currentGameId && currentUserId) {
+                socket.emit('stopTyping', {
+                    gameId: currentGameId,
+                    userId: currentUserId
+                });
+                log('Indicateur de frappe désactivé', 'info');
+            }
+        });
+
+        // Envoyer message avec Entrée
+        document.getElementById('messageText').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendMessageBtn.click();
+            }
+        });
+
+        // Envoyer réponse avec Entrée
+        document.getElementById('answerText').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendAnswerBtn.click();
+            }
+        });
+    </script>
+</body>
+</html>

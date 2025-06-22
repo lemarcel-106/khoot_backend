@@ -1,0 +1,19 @@
+const express = require('express');
+const router = express.Router();
+const userController = require('../../controllers/userController');
+const checkRequiredFields = require('../../middleware/checkRequiredFields')
+const authenticateToken = require('../../middleware/authenticateToken');
+
+router.get('/users', authenticateToken, userController.getUsers);
+
+router.post('/users', checkRequiredFields(['name', 'email', 'statut', 'password', 'ecole', 'phone']), userController.createUser);
+
+router.put('/user/update/:id', authenticateToken, userController.updateUser);
+
+router.delete('/user/delete/:id', authenticateToken, userController.deleteUserById);
+
+router.get('/user/:id', authenticateToken, userController.getUsersById);
+
+router.get('/user/ecole/:id', authenticateToken, userController.getUserByEcole);
+
+module.exports = router;
