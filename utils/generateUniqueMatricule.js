@@ -5,7 +5,7 @@ const generateUniqueMatricule = async () => {
     let unique = false;
     let matricule = '';
     while (!unique) {
-        matricule = 'MATR-' + require('crypto').randomBytes(4).toString('hex').toUpperCase();
+        matricule = 'AKILI-' + require('crypto').randomBytes(4).toString('hex').toUpperCase();
         const existingParticipant = await Apprenant.findOne({ matricule });
         if (!existingParticipant) {
             unique = true;

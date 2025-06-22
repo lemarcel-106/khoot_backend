@@ -7,3 +7,7 @@
 2025-06-22T12:09:31.768Z [POST] /api/ecoles 400 221.572 ms - 81 bytes - IP: ::1
 2025-06-22T12:10:08.505Z [POST] /api/ecoles 400 217.610 ms - 81 bytes - IP: ::1
 2025-06-22T12:11:50.943Z [POST] /api/ecoles 400 219.740 ms - 81 bytes - IP: ::1
+2025-06-22T12:44:13.490Z [POST] /api/admin 201 479.481 ms - 473 bytes - IP: ::1
+2025-06-22T12:48:06.680Z [POST] /api/admin 500 577.746 ms - 61 bytes - IP: ::1
+2025-06-22T12:48:14.168Z [POST] /api/admin 500 540.536 ms - 61 bytes - IP: ::1
+2025-06-22T12:48:20.554Z [POST] /api/admin 201 533.400 ms - 475 bytes - IP: ::1

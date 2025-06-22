@@ -4,41 +4,41 @@ const generateMatricule = require('../utils/generateMatriculeAdmin');
 const AdminController = {
 
     async createAdmin(req, res) {
-    try {
-        const adminData = req.body;
-        const currentUser = req.user;
-
-        // Vérification du super_admin
-        if (currentUser.role !== 'super_admin') {
-            return res.status(403).json({
-                success: false,
-                message: 'Accès refusé. Seul un super administrateur peut créer des admins.'
-            });
-        }
-        // console.log(adminData.ecole)
-        // Générer le matricule automatiquement
         try {
-            adminData.matricule = await generateMatricule(adminData.ecole);
+            const adminData = req.body;
+            const currentUser = req.user;
+
+            // Vérification du super_admin
+            if (currentUser.role !== 'super_admin') {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Accès refusé. Seul un super administrateur peut créer des admins.'
+                });
+            }
+
+            // Générer le matricule automatiquement
+            try {
+                adminData.matricule = await generateMatricule(adminData.ecole);
+            } catch (error) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Erreur lors de la génération du matricule: ${error.message}`
+                });
+            }
+
+            const admin = await AdminService.createAdmin(adminData);
+            return res.status(201).json({
+                success: true,
+                message: 'Admin créé avec succès',
+                data: admin
+            });
         } catch (error) {
-            return res.status(400).json({
+            return res.status(500).json({
                 success: false,
-                message: `Erreur lors de la génération du matricule: ${error.message}`
+                message: error.message
             });
         }
-
-        const admin = await AdminService.createAdmin(adminData);
-        return res.status(201).json({
-            success: true,
-            message: 'Admin créé avec succès',
-            data: admin
-        });
-    } catch (error) {
-        return res.status(500).json({
-            success: false,
-            message: error.message
-        });
-    }
-},
+    },
 
     async getAdminById(req, res) {
         try {
@@ -86,7 +86,7 @@ const AdminController = {
                 });
             }
 
-            const admins = await AdminService.getAllAdmins();
+            const admins = await AdminService.getAllAdmin();
             return res.status(200).json({
                 success: true,
                 message: 'Liste des admins récupérée avec succès',
@@ -102,7 +102,7 @@ const AdminController = {
 
     async getAdminByMatricule(req, res) {
         try {
-            const matricule = req.body.matricule; // Correction: extraire la propriété matricule
+            const matricule = req.body.matricule;
             const currentUser = req.user;
 
             // Seul un super_admin peut rechercher un admin par matricule
@@ -113,7 +113,7 @@ const AdminController = {
                 });
             }
 
-            const admin = await AdminService.getAdminByMatricule({ matricule });
+            const admin = await AdminService.getAdminByMatricule(matricule);
             if (!admin) {
                 return res.status(404).json({
                     success: false,
@@ -153,6 +153,14 @@ const AdminController = {
                 return res.status(403).json({
                     success: false,
                     message: 'Accès refusé. Vous ne pouvez pas modifier votre rôle.'
+                });
+            }
+
+            // Empêcher la modification du matricule
+            if (adminData.matricule) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Accès refusé. Le matricule ne peut pas être modifié.'
                 });
             }
 
@@ -238,9 +246,12 @@ const AdminController = {
             const adminData = req.body;
             const currentUser = req.user;
 
-            // Empêcher la modification du rôle via cette route
+            // Empêcher la modification du rôle et du matricule via cette route
             if (adminData.role) {
                 delete adminData.role;
+            }
+            if (adminData.matricule) {
+                delete adminData.matricule;
             }
 
             const updatedAdmin = await AdminService.updateAdmin(currentUser.id, adminData);

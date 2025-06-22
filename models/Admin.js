@@ -11,8 +11,8 @@ const AdminSchema = new mongoose.Schema({
     },
     matricule: {
         type: String,
-        required: true,
         unique: true
+        // Suppression de 'required: true' car il sera généré automatiquement
     },
     genre: {
         type: String,
@@ -26,13 +26,11 @@ const AdminSchema = new mongoose.Schema({
         type: String,
         required: true,
         unique: true    
-
     },
     email: {
         type: String,
         required: true,
         unique: true
-
     },
     password: {
         type: String,
