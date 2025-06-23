@@ -174,12 +174,18 @@ const notificationRoutes = require('./routes/api/notificationRoutes');
 const temoignageRoutes = require('./routes/api/temoignageRoutes');
 const faqRoutes = require('./routes/api/faqRoutes');
 
+// Route de jeu
+const gameRoutes = require('./routes/game/gameRoutes');
+
 // ==================================================================
 // DÉFINITION DES ROUTES
 // ==================================================================
 
 // Route principale
 app.use('/', appRoutes);
+
+// routes du jeu
+app.use('/game', gameRoutes);
 
 // Routes API principales
 app.use('/api', authRoute);
