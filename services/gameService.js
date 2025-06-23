@@ -3,20 +3,60 @@ const Participation = require("../models/Participant");
 const Participant = require("../models/Participant");
 
 const gameService = {
-  async getPlanificationsByJeu(jeuId) {
+  async getPlanificationByPin(pin) {
     try {
-      return await Planification.find({ jeu: jeuId })
-        // .populate('jeu')
+      return await Planification.findOne(pin) // Utilisation de l'objet pour chercher par 'pin'
         .populate({
-          path: "participants", // Populate des participants
-          populate: {
-            path: "apprenant", // Populate de l'apprenant pour chaque participant
-          },
+          path: "jeu",
+          populate: [
+            {
+              path: "questions",
+              populate: [
+                {
+                  path: "reponses", // Populate des réponses de chaque question
+                },
+
+                {
+                  path: "typeQuestion", // Populate des réponses de chaque question
+                },
+
+                {
+                  path: "point", // Populate du champ point pour chaque question
+                },
+              ],
+            },
+          ],
+        })
+        .populate({
+          path: "participants",
+          populate: [
+            {
+              path: "apprenant", // Populate de l'apprenant associé au participant
+            },
+            {
+              path: "reponses", // Populate des réponses dans chaque participant
+              populate: {
+                path: "question",
+                populate: [
+                  {
+                    path: "reponses", // Populate des réponses associées aux questions
+                  },
+
+                  {
+                    path: "typeQuestion", // Populate des réponses de chaque question
+                  },
+                  {
+                    path: "point",
+                  },
+                ],
+              },
+            },
+          ],
         })
         .exec();
     } catch (error) {
       throw new Error(
-        "Erreur lors de la récupération des planifications : " + error.message
+        "Erreur lors de la récupération de la planification : " + error.message
       );
     }
   },
