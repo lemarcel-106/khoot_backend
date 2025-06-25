@@ -1,6 +1,22 @@
 const authService = require("../services/authService");
 const gameService = require("../services/gameService");
 
+// Fonction utilitaire générique
+const handleLogin = async (res, loginFn, ...params) => {
+  try {
+    const result = await loginFn(...params);
+
+    if (!result.token) {
+      return res.status(400).json({ message: result.message });
+    }
+
+    return res.json(result);
+  } catch (error) {
+    console.error("Erreur dans handleLogin:", error);
+    return res.status(500).json({ message: "Erreur du serveur" });
+  }
+};
+
 const gameController = {
   async getPlanificationByPin(req, res) {
     try {
@@ -15,12 +31,25 @@ const gameController = {
     }
   },
 
+  async getPlanificationById(req, res) {
+    try {
+      const id = req.params.id;
+      const planification = await gameService.getPlanificationById(id);
+      if (!planification) {
+        return res.status(404).json({ message: "Planification non trouvée" });
+      }
+      return res.status(200).json(planification);
+    } catch (error) {
+      return res.status(500).json({ message: error.message });
+    }
+  },
+
   async loginParticipant(req, res) {
     const { matricule } = req.body;
     if (!matricule) {
       return res.status(400).json({ message: "Matricule requis." });
     }
-    return this.handleLogin(res, authService.loginApprenant, matricule);
+    return handleLogin(res, authService.loginApprenant, matricule);
   },
 
   async createParticipation(req, res) {
@@ -86,22 +115,6 @@ const gameController = {
         message: "Erreur lors de la mise à jour du participant",
         error: err.message,
       });
-    }
-  },
-
-  // Fonction utilitaire générique
-  handleLogin: async (res, loginFn, ...params) => {
-    try {
-      const result = await loginFn(...params);
-
-      if (!result.token) {
-        return res.status(400).json({ message: result.message });
-      }
-
-      return res.json(result);
-    } catch (error) {
-      console.error("Erreur dans handleLogin:", error);
-      return res.status(500).json({ message: "Erreur du serveur" });
     }
   },
 };
