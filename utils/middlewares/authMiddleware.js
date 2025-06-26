@@ -52,13 +52,13 @@ const authMiddleware = {
             }
 
             req.user = {
-                id: admin._id,
+                id: admin._id.toString(),  // ✅ CORRECTION : Convertir en chaîne
                 role: admin.role,
                 email: admin.email,
                 nom: admin.nom,
-                ecole: admin.ecole,
+                ecole: admin.ecole ? admin.ecole.toString() : null,  // ✅ CORRECTION : Convertir ecole aussi
                 prenom: admin.prenom,
-                statut: admin.statut  // ✅ AJOUT: Inclure le statut
+                statut: admin.statut
             };
             
             console.log(`Utilisateur authentifié: ${admin.email} (${admin.role}) - Statut: ${admin.statut}`);

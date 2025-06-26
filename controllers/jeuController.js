@@ -408,6 +408,14 @@ exports.updateJeu = async (req, res) => {
  * Supprime un jeu
  * Route: POST /api/jeux/delete/:id
  */
+/**
+ * Supprime un jeu
+ * Route: POST /api/jeux/delete/:id
+ */
+/**
+ * Supprime un jeu
+ * Route: POST /api/jeux/delete/:id
+ */
 exports.deleteJeuById = async (req, res) => {
     try {
         const jeuId = req.params.id;
@@ -423,16 +431,40 @@ exports.deleteJeuById = async (req, res) => {
         const jeuExistant = await jeuService.getJeuById(jeuId);
         
         if (req.user.role !== 'super_admin') {
+            // ✅ CORRECTION: Gestion correcte des comparaisons d'école
+            let jeuEcoleId;
+            
+            // Gérer les cas où ecole peut être populé ou non
+            if (typeof jeuExistant.ecole === 'object' && jeuExistant.ecole._id) {
+                jeuEcoleId = jeuExistant.ecole._id.toString();
+            } else {
+                jeuEcoleId = jeuExistant.ecole.toString();
+            }
+            
             // Vérifier que le jeu appartient à l'école de l'utilisateur
-            if (!req.user.ecole || req.user.ecole.toString() !== jeuExistant.ecole._id.toString()) {
+            if (!req.user.ecole || req.user.ecole.toString() !== jeuEcoleId) {
+                logger.warn(`Tentative de suppression refusée pour ${req.user.email}: jeu ${jeuId} n'appartient pas à son école`);
+                logger.warn(`User école: ${req.user.ecole}, Jeu école: ${jeuEcoleId}`);
                 return res.status(403).json({
                     success: false,
                     message: 'Accès refusé. Ce jeu n\'appartient pas à votre école.'
                 });
             }
             
+            // ✅ CORRECTION: Gestion correcte des comparaisons de créateur
+            let jeuCreateurId;
+            
+            // Gérer les cas où createdBy peut être populé ou non
+            if (typeof jeuExistant.createdBy === 'object' && jeuExistant.createdBy._id) {
+                jeuCreateurId = jeuExistant.createdBy._id.toString();
+            } else {
+                jeuCreateurId = jeuExistant.createdBy.toString();
+            }
+            
             // Enseignant ne peut supprimer que ses propres jeux
-            if (req.user.role === 'enseignant' && req.user.id !== jeuExistant.createdBy._id.toString()) {
+            if (req.user.role === 'enseignant' && req.user.id.toString() !== jeuCreateurId) {
+                logger.warn(`Tentative de suppression refusée pour enseignant ${req.user.email}: jeu ${jeuId} ne lui appartient pas`);
+                logger.warn(`User ID: ${req.user.id.toString()}, Créateur ID: ${jeuCreateurId}`);
                 return res.status(403).json({
                     success: false,
                     message: 'Accès refusé. Vous ne pouvez supprimer que vos propres jeux.'

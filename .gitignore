@@ -6,5 +6,8 @@ npm-debug.log
 .DS_Store
 .env
 
+log/
 *.log
 package-lock.json
+
+.vscode/

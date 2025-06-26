@@ -150,6 +150,7 @@ app.get('/health', (req, res) => {
 // ==================================================================
 // IMPORTATION DES ROUTES
 // ==================================================================
+const gameRoutes = require('./routes/game/gameRoutes');
 const appRoutes = require('./routes/appRoutes');
 const userRoutes = require('./routes/api/userRoutes');
 const jeuRoute = require('./routes/api/jeuRoutes');
@@ -173,9 +174,9 @@ const abonnementRoutes = require('./routes/api/abonnementRoutes');
 const notificationRoutes = require('./routes/api/notificationRoutes');
 const temoignageRoutes = require('./routes/api/temoignageRoutes');
 const faqRoutes = require('./routes/api/faqRoutes');
+const statsRoutes = require('./routes/api/statsRoutes');
 
-// Route de jeu
-const gameRoutes = require('./routes/game/gameRoutes');
+// Ajout de la route dans la section des routes API
 
 // ==================================================================
 // DÉFINITION DES ROUTES
@@ -183,11 +184,40 @@ const gameRoutes = require('./routes/game/gameRoutes');
 
 // Route principale
 app.use('/', appRoutes);
+app.use('/uploads', express.static(path.join(__dirname, 'public/uploads')));
+app.use('/public', express.static(path.join(__dirname, 'public')));
+
+
+// ✅ AJOUTER dans app.js AVANT les routes
+app.use('/api', (req, res, next) => {
+    // Désactiver le cache pour toutes les routes API sensibles
+    if (req.method === 'GET' && 
+        (req.path.includes('/mes-enseignants') || 
+         req.path.includes('/apprenant') ||
+         req.path.includes('/jeux'))) {
+        
+        res.set({
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0'
+        });
+    }
+    next();
+});
+
+
+
+// Routes API principales
+app.use('/api', statsRoutes);
+
+// Dans app.js ou server.js
+app.use('/api/faq', require('./routes/api/faqRoutes'));
+app.use('/api/subscription-stats', require('./routes/api/subscriptionStatsRoutes'));
 
 // routes du jeu
 app.use('/game', gameRoutes);
 
-// Routes API principales
+
 app.use('/api', authRoute);
 app.use('/api', userRoutes);
 app.use('/api', apprenantRoutes);

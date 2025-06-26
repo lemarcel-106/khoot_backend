@@ -12,7 +12,7 @@ const questionService = {
         }
     },
 
-     createQuestion: async (req) => {
+    createQuestion: async (req) => {
         try {
             const { libelle, type_fichier, temps, limite_response, typeQuestion, point, jeu } = req.body;
 
@@ -137,8 +137,156 @@ const questionService = {
         } catch (error) {
             throw new Error("Erreur lors de la suppression de la question : " + error.message);
         }
+    },
+
+    /**
+     * Récupère toutes les questions d'un jeu avec tous les détails
+     * @param {string} jeuId - ID du jeu
+     * @param {object} userData - Données de l'utilisateur pour vérification des permissions
+     * @returns {Promise<Object>} Questions avec tous les détails et statistiques
+     */
+    getQuestionsByJeuDetailles: async (jeuId, userData = null) => {
+        try {
+            // Validation de l'ID du jeu
+            if (!jeuId) {
+                throw new Error("L'ID du jeu est requis");
+            }
+
+            // Vérifier que le jeu existe et les permissions
+            const jeu = await Jeu.findById(jeuId)
+                .populate('createdBy', 'nom prenom email role ecole')
+                .populate('ecole', 'libelle ville')
+                .exec();
+
+            if (!jeu) {
+                throw new Error("Jeu non trouvé");
+            }
+
+            // Vérification des permissions si userData est fourni
+            if (userData) {
+                if (userData.role !== 'super_admin') {
+                    // Vérifier que le jeu appartient à l'école de l'utilisateur
+                    const jeuEcoleId = typeof jeu.ecole === 'object' ? jeu.ecole._id.toString() : jeu.ecole.toString();
+                    if (!userData.ecole || userData.ecole.toString() !== jeuEcoleId) {
+                        throw new Error('Accès refusé. Ce jeu n\'appartient pas à votre école.');
+                    }
+                    
+                    // Enseignant ne peut voir que ses propres jeux
+                    if (userData.role === 'enseignant') {
+                        const jeuCreateurId = typeof jeu.createdBy === 'object' ? jeu.createdBy._id.toString() : jeu.createdBy.toString();
+                        if (userData.id.toString() !== jeuCreateurId) {
+                            throw new Error('Accès refusé. Vous ne pouvez voir que vos propres jeux.');
+                        }
+                    }
+                }
+            }
+
+            // Récupérer toutes les questions du jeu avec détails complets
+            const questions = await Question.find({ jeu: jeuId })
+                .populate({
+                    path: 'reponses',
+                    select: 'reponse_texte etat file date',
+                    options: { sort: { date: 1 } } // Trier les réponses par date
+                })
+                .populate({
+                    path: 'typeQuestion',
+                    select: 'libelle description reference'
+                })
+                .populate({
+                    path: 'point',
+                    select: 'nature valeur description'
+                })
+                .populate({
+                    path: 'jeu',
+                    select: 'titre image',
+                    populate: {
+                        path: 'createdBy',
+                        select: 'nom prenom email'
+                    }
+                })
+                .sort({ date: 1 }) // Trier les questions par ordre de création
+                .exec();
+
+            // Enrichir les données avec des informations calculées
+            const questionsEnrichies = questions.map(question => {
+                const questionObj = question.toObject();
+                
+                // Ajouter des statistiques sur les réponses
+                const reponses = questionObj.reponses || [];
+                const bonnesReponses = reponses.filter(r => r.etat === 1);
+                const mauvaisesReponses = reponses.filter(r => r.etat === 0);
+                
+                return {
+                    ...questionObj,
+                    // Informations enrichies
+                    infos: {
+                        nombreReponses: reponses.length,
+                        nombreBonnesReponses: bonnesReponses.length,
+                        nombreMauvaisesReponses: mauvaisesReponses.length,
+                        aBonneReponse: bonnesReponses.length > 0,
+                        tempsFormate: `${questionObj.temps} secondes`,
+                        typeReference: questionObj.typeQuestion?.reference,
+                        pointsAttribues: questionObj.point?.valeur || 0
+                    },
+                    // Réponses formatées pour faciliter l'affichage
+                    reponsesFormatees: reponses.map(reponse => ({
+                        ...reponse,
+                        etatTexte: reponse.etat === 1 ? 'Correcte' : 'Incorrecte',
+                        isCorrect: reponse.etat === 1
+                    }))
+                };
+            });
+
+            // Retourner les questions avec informations du jeu
+            return {
+                jeu: {
+                    id: jeu._id,
+                    titre: jeu.titre,
+                    image: jeu.image,
+                    date: jeu.date,
+                    createdBy: jeu.createdBy,
+                    ecole: jeu.ecole,
+                    totalQuestions: questionsEnrichies.length
+                },
+                questions: questionsEnrichies,
+                statistiques: {
+                    totalQuestions: questionsEnrichies.length,
+                    questionsAvecReponses: questionsEnrichies.filter(q => q.infos.nombreReponses > 0).length,
+                    questionsAvecBonnesReponses: questionsEnrichies.filter(q => q.infos.aBonneReponse).length,
+                    totalPointsPossibles: questionsEnrichies.reduce((total, q) => total + (q.infos.pointsAttribues || 0), 0),
+                    tempsTotal: questionsEnrichies.reduce((total, q) => total + q.temps, 0)
+                }
+            };
+
+        } catch (error) {
+            throw new Error(`Erreur lors de la récupération des questions du jeu: ${error.message}`);
+        }
+    },
+
+    /**
+     * Version simplifiée pour récupérer juste les questions d'un jeu
+     * @param {string} jeuId - ID du jeu
+     * @returns {Promise<Array>} Liste simple des questions
+     */
+    getQuestionsByJeuSimple: async (jeuId) => {
+        try {
+            if (!jeuId) {
+                throw new Error("L'ID du jeu est requis");
+            }
+
+            const questions = await Question.find({ jeu: jeuId })
+                .populate('reponses', 'reponse_texte etat file')
+                .populate('typeQuestion', 'libelle reference')
+                .populate('point', 'nature valeur')
+                .sort({ date: 1 })
+                .exec();
+
+            return questions;
+        } catch (error) {
+            throw new Error(`Erreur lors de la récupération simple des questions: ${error.message}`);
+        }
     }
 
-};
+}; // ✅ CORRECTION: Fermeture correcte de l'objet questionService
 
 module.exports = questionService;

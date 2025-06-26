@@ -30,12 +30,12 @@ const authenticateToken = (req, res, next) => {
         
         // ✅ IMPORTANT : Stocker les infos complètes de l'utilisateur
         req.user = {
-            id: decoded.id,
+            id: decoded.id.toString ? decoded.id.toString() : decoded.id,  // ✅ Assurer que c'est une chaîne
             email: decoded.email,
             role: decoded.role,
             nom: decoded.nom,
             prenom: decoded.prenom,
-            ecole: decoded.ecole // ✅ ESSENTIEL : inclure l'école
+            ecole: decoded.ecole && decoded.ecole.toString ? decoded.ecole.toString() : decoded.ecole  // ✅ Assurer que c'est une chaîne
         };
         
         console.log('Token décodé avec succès:', req.user); // Debug - retirer en production
