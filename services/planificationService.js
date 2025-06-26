@@ -48,34 +48,89 @@ const planificationService = {
         return jeu;
     },
 
+// Dans services/planificationService.js
+// Remplacer la méthode getPlanificationsByJeu existante
 
     async getPlanificationsByJeu(jeuId) {
         try {
             return await Planification.find({ jeu: jeuId })
-                // .populate('jeu')
                 .populate({
-                        path: 'participants', // Populate des participants
-                        populate: {
-                            path: 'apprenant', // Populate de l'apprenant pour chaque participant
+                    path: 'jeu', // ✅ DÉCOMMENTER cette ligne !
+                    populate: [
+                        {
+                            path: 'questions',
+                            populate: [
+                                { path: 'reponses' },
+                                { path: 'typeQuestion' }, // ✅ AJOUTER typeQuestion
+                                { path: 'point' }
+                            ]
                         },
-                    })
+                        { path: 'createdBy', select: 'nom prenom email' },
+                        { path: 'ecole', select: 'libelle ville' }
+                    ]
+                })
+                .populate({
+                    path: 'participants',
+                    populate: [
+                        {
+                            path: 'apprenant', // ✅ Améliorer le populate apprenant
+                            select: 'nom prenom avatar matricule email'
+                        },
+                        {
+                            path: 'reponses',
+                            populate: {
+                                path: 'question',
+                                populate: [
+                                    { path: 'reponses' },
+                                    { path: 'typeQuestion' }, // ✅ AJOUTER ici aussi
+                                    { path: 'point' }
+                                ]
+                            }
+                        }
+                    ]
+                })
                 .exec();
         } catch (error) {
             throw new Error('Erreur lors de la récupération des planifications : ' + error.message);
         }
     },
 
-    // async getPlanificationByPin(pin) {
-    //     try {
-    //         return await Planification.findOne(pin)
-    //             .populate('jeu')
-    //             .populate('participants')
-    //             .exec();
-    //     } catch (error) {
-    //         throw new Error('Erreur lors de la récupération de la planification : ' + error.message);
-    //     }
-    // },
-    
+    // ✅ NOUVELLE MÉTHODE : Validation et nettoyage des données
+    async validateAndCleanPlanifications(planifications) {
+        const cleanedPlanifications = [];
+        
+        for (const planification of planifications) {
+            // Vérifier si le jeu existe
+            if (!planification.jeu) {
+                console.warn(`⚠️ Planification ${planification._id} : Jeu manquant (référence cassée)`);
+                continue; // Ignorer cette planification
+            }
+            
+            // Nettoyer les participants avec apprenants manquants
+            const validParticipants = [];
+            for (const participant of planification.participants || []) {
+                if (!participant.apprenant) {
+                    console.warn(`⚠️ Participant ${participant._id} : Apprenant manquant (référence cassée)`);
+                    // On peut soit ignorer le participant, soit le garder avec apprenant = null
+                    // Ici, on va le garder mais indiquer le problème
+                    participant.apprenant = {
+                        _id: null,
+                        nom: "APPRENANT_SUPPRIME",
+                        prenom: "REFERENCE_CASSEE",
+                        avatar: null,
+                        matricule: "N/A"
+                    };
+                }
+                validParticipants.push(participant);
+            }
+            
+            planification.participants = validParticipants;
+            cleanedPlanifications.push(planification);
+        }
+        
+        return cleanedPlanifications;
+    },
+
     async getPlanificationById(id) {
         try {
             return await Planification.findById(id) // Utilisation de l'objet pour chercher par 'pin'

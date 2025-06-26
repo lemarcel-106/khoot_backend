@@ -309,7 +309,7 @@ const EcoleController = {
         }
     },
 
-    // Méthode utilitaire pour obtenir des statistiques détaillées
+    // Méthode pour obtenir les statistiques détaillées selon le format exact souhaité
     async getStatistiquesDetaillees(req, res) {
         try {
             const { ecoleId } = req.params;
@@ -327,112 +327,161 @@ const EcoleController = {
                 });
             }
 
-            if (adminData.role !== 'super_admin' && adminData.ecole?.toString() !== ecoleId) {
-                return res.status(403).json({
-                    success: false,
-                    message: "Accès refusé"
-                });
+            // Vérification des permissions d'accès à l'école
+            if (adminData.role !== 'super_admin') {
+                if (adminData.ecole && adminData.ecole.toString() !== ecoleId) {
+                    return res.status(403).json({
+                        success: false,
+                        message: "Accès refusé. Vous ne pouvez consulter que les statistiques de votre école."
+                    });
+                }
             }
 
-            // Récupérer les statistiques détaillées
-            const [
-                ecoleInfo,
-                apprenants,
-                enseignants,
-                jeux,
-                planifications,
-                participationsActives
-            ] = await Promise.all([
-                // Informations de l'école
-                Ecole.findById(ecoleId).populate('pays'),
-                
-                // Détails des apprenants
-                Apprenant.find({ ecole: ecoleId }).select('nom prenom matricule date'),
-                
-                // Détails des enseignants
-                Enseignant.find({ 
-                    ecole: ecoleId, 
-                    role: { $in: ['enseignant', 'admin'] } 
-                }).select('nom prenom email role'),
-                
-                // Détails des jeux
-                Jeu.find({ ecole: ecoleId }).select('titre date').populate('createdBy', 'nom prenom'),
-                
-                // Détails des planifications
-                Planification.aggregate([
-                    {
-                        $lookup: {
-                            from: 'jeus',
-                            localField: 'jeu',
-                            foreignField: '_id',
-                            as: 'jeuInfo'
-                        }
-                    },
-                    {
-                        $match: {
-                            'jeuInfo.ecole': new mongoose.Types.ObjectId(ecoleId)
-                        }
-                    },
-                    {
-                        $project: {
-                            pin: 1,
-                            statut: 1,
-                            type: 1,
-                            date_debut: 1,
-                            date_fin: 1,
-                            limite_participant: 1,
-                            participants: 1,
-                            'jeuInfo.titre': 1
-                        }
-                    }
-                ]),
-                
-                // Participations actives (planifications en cours)
-                Planification.countDocuments({
-                    statut: 'en cours'
-                })
-            ]);
+            // 1. Récupérer les détails complets de l'école avec apprenants
+            const ecoleDetails = await Ecole.findById(ecoleId)
+                .populate('pays', 'libelle')
+                .populate('abonnementActuel')
+                .populate('apprenants')
+                .lean();
 
-            if (!ecoleInfo) {
+            if (!ecoleDetails) {
                 return res.status(404).json({
                     success: false,
                     message: "École non trouvée"
                 });
             }
 
+            // 2. Récupérer l'administrateur de l'école
+            const administrateur = await Enseignant.findOne({ 
+                ecole: ecoleId, 
+                role: 'admin' 
+            }).populate('pays', 'libelle').lean();
+
+            // 3. Récupérer la liste des jeux avec leurs professeurs associés
+            const jeuxAvecProfesseurs = await Jeu.find({ ecole: ecoleId })
+                .populate('createdBy', 'nom prenom email matricule role')
+                .populate('questions')
+                .sort({ date: -1 })
+                .lean();
+
+            // 4. Récupérer toutes les planifications avec détails
+            const planifications = await Planification.aggregate([
+                {
+                    $lookup: {
+                        from: 'jeus', // Collection des jeux
+                        localField: 'jeu',
+                        foreignField: '_id',
+                        as: 'jeuInfo'
+                    }
+                },
+                {
+                    $match: {
+                        'jeuInfo.ecole': new mongoose.Types.ObjectId(ecoleId)
+                    }
+                },
+                {
+                    $lookup: {
+                        from: 'admins', // Collection des enseignants
+                        localField: 'createdBy',
+                        foreignField: '_id',
+                        as: 'enseignantInfo'
+                    }
+                },
+                {
+                    $sort: { dateCreation: -1 }
+                }
+            ]);
+
+            // Construire la réponse selon le format exact demandé
             return res.status(200).json({
                 success: true,
-                message: 'Statistiques détaillées récupérées avec succès',
+                message: "Statistiques détaillées de l'école récupérées avec succès",
                 data: {
+                    // Détails de l'école avec la structure exacte
                     ecole: {
-                        id: ecoleId,
-                        nom: ecoleInfo.libelle,
-                        ville: ecoleInfo.ville,
-                        adresse: ecoleInfo.adresse,
-                        telephone: ecoleInfo.telephone,
-                        email: ecoleInfo.email,
-                        pays: ecoleInfo.pays?.libelle
+                        _id: ecoleDetails._id,
+                        libelle: ecoleDetails.libelle,
+                        adresse: ecoleDetails.adresse,
+                        ville: ecoleDetails.ville,
+                        telephone: ecoleDetails.telephone,
+                        email: ecoleDetails.email,
+                        fichier: ecoleDetails.fichier,
+                        pays: ecoleDetails.pays ? {
+                            _id: ecoleDetails.pays._id,
+                            libelle: ecoleDetails.pays.libelle
+                        } : null,
+                        apprenants: ecoleDetails.apprenants || []
                     },
-                    statistiques: {
-                        resume: {
-                            total_apprenants: apprenants.length,
-                            total_enseignants: enseignants.length,
-                            total_jeux: jeux.length,
-                            total_planifications: planifications.length,
-                            participations_actives: participationsActives
-                        },
-                        details: {
-                            apprenants_recents: apprenants
-                                .sort((a, b) => new Date(b.date) - new Date(a.date))
-                                .slice(0, 5),
-                            jeux_recents: jeux
-                                .sort((a, b) => new Date(b.date) - new Date(a.date))
-                                .slice(0, 5),
-                            planifications_actives: planifications.filter(p => p.statut === 'en cours')
-                        }
-                    },
-                    timestamp: new Date().toISOString()
-                }
+
+                    // Abonnement associé selon le format exact
+                    abonnement: ecoleDetails.abonnementActuel ? {
+                        _id: ecoleDetails.abonnementActuel._id,
+                        nom: ecoleDetails.abonnementActuel.nom,
+                        description: ecoleDetails.abonnementActuel.description,
+                        prix: ecoleDetails.abonnementActuel.prix,
+                        nombreJeuxMax: ecoleDetails.abonnementActuel.nombreJeuxMax,
+                        nombreApprenantsMax: ecoleDetails.abonnementActuel.nombreApprenantsMax,
+                        nombreEnseignantsMax: ecoleDetails.abonnementActuel.nombreEnseignantsMax,
+                        dureeEnJours: ecoleDetails.abonnementActuel.dureeEnJours,
+                        dateCreation: ecoleDetails.abonnementActuel.dateCreation
+                    } : null,
+
+                    // Administrateur selon le format exact
+                    administrateur: administrateur ? {
+                        _id: administrateur._id,
+                        nom: administrateur.nom,
+                        prenom: administrateur.prenom,
+                        matricule: administrateur.matricule,
+                        genre: administrateur.genre,
+                        statut: administrateur.statut,
+                        phone: administrateur.phone,
+                        email: administrateur.email,
+                        adresse: administrateur.adresse,
+                        date: administrateur.date,
+                        pays: administrateur.pays ? {
+                            _id: administrateur.pays._id,
+                            libelle: administrateur.pays.libelle
+                        } : null,
+                        role: administrateur.role
+                    } : null,
+
+                    // Liste des jeux avec professeur selon le format exact
+                    jeux: jeuxAvecProfesseurs.map(jeu => ({
+                        _id: jeu._id,
+                        titre: jeu.titre,
+                        image: jeu.image,
+                        date: jeu.date,
+                        nombreQuestions: jeu.questions?.length || 0,
+                        professeur: jeu.createdBy ? {
+                            _id: jeu.createdBy._id,
+                            nom: jeu.createdBy.nom,
+                            prenom: jeu.createdBy.prenom,
+                            email: jeu.createdBy.email,
+                            matricule: jeu.createdBy.matricule,
+                            role: jeu.createdBy.role
+                        } : null
+                    })),
+
+                    // Planifications selon le format exact
+                    planifications: {
+                        total: planifications.length,
+                        liste: planifications.map(planif => ({
+                            _id: planif._id,
+                            pin: planif.pin,
+                            statut: planif.statut,
+                            jeu: planif.jeuInfo && planif.jeuInfo.length > 0 ? {
+                                _id: planif.jeuInfo[0]._id,
+                                titre: planif.jeuInfo[0].titre
+                            } : null,
+                            enseignant: planif.enseignantInfo && planif.enseignantInfo.length > 0 ? {
+                                nom: planif.enseignantInfo[0].nom,
+                                prenom: planif.enseignantInfo[0].prenom,
+                                matricule: planif.enseignantInfo[0].matricule
+                            } : null
+                        }))
+                    }
+                },
+                timestamp: new Date().toISOString()
             });
 
         } catch (error) {
@@ -443,7 +492,165 @@ const EcoleController = {
                 error: process.env.NODE_ENV === 'development' ? error.message : undefined
             });
         }
+    },
+
+    
+    async getParametresEcole(req, res) {
+        try {
+            // Récupérer l'ID de l'école depuis le token JWT
+            const currentUser = req.user;
+            
+            console.log('🔍 Debug getParametresEcole:');
+            console.log('- User:', currentUser);
+
+            // Vérifier que l'admin a une école associée
+            if (!currentUser.ecole) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Aucune école associée à votre compte"
+                });
+            }
+
+            // ✅ SOLUTION DIRECTE : Récupérer l'école sans vérification de permissions stricte
+            // pour les paramètres de sa propre école
+            const ecole = await EcoleService.getEcoleById(currentUser.ecole, null);
+
+            if (!ecole) {
+                return res.status(404).json({
+                    success: false,
+                    message: "École non trouvée"
+                });
+            }
+
+            // Formater la réponse avec les paramètres de l'école
+            const parametres = {
+                ecole: {
+                    id: ecole._id,
+                    libelle: ecole.libelle,
+                    adresse: ecole.adresse,
+                    ville: ecole.ville,
+                    telephone: ecole.telephone,
+                    email: ecole.email,
+                    pays: ecole.pays,
+                    admin: ecole.admin
+                },
+                abonnement: null,
+                limites: {
+                    apprenants: {
+                        actuels: ecole.apprenants?.length || 0,
+                        maximum: 0
+                    },
+                    enseignants: {
+                        actuels: 0,
+                        maximum: 0
+                    },
+                    jeux: {
+                        actuels: 0,
+                        maximum: 0
+                    }
+                }
+            };
+
+            // Si un abonnement actuel existe
+            if (ecole.abonnementActuel) {
+                parametres.abonnement = {
+                    id: ecole.abonnementActuel._id,
+                    nom: ecole.abonnementActuel.nom,
+                    description: ecole.abonnementActuel.description,
+                    prix: ecole.abonnementActuel.prix,
+                    dateDebut: ecole.abonnementActuel.dateDebut,
+                    dateFin: ecole.abonnementActuel.dateFin,
+                    dureeEnJours: ecole.abonnementActuel.dureeEnJours,
+                    statut: new Date() < new Date(ecole.abonnementActuel.dateFin) ? 'actif' : 'expiré'
+                };
+
+                // Mettre à jour les limites avec l'abonnement
+                parametres.limites.apprenants.maximum = ecole.abonnementActuel.nombreApprenantsMax || 0;
+                parametres.limites.enseignants.maximum = ecole.abonnementActuel.nombreEnseignantsMax || 0;
+                parametres.limites.jeux.maximum = ecole.abonnementActuel.nombreJeuxMax || 0;
+            }
+
+            // Compter les enseignants actuels
+            const Enseignant = require('../models/Admin');
+            const enseignantsCount = await Enseignant.countDocuments({
+                ecole: currentUser.ecole,
+                role: { $in: ['enseignant', 'admin'] }
+            });
+            parametres.limites.enseignants.actuels = enseignantsCount;
+
+            // Compter les jeux actuels
+            const Jeu = require('../models/Jeu');
+            const jeuxCount = await Jeu.countDocuments({ ecole: currentUser.ecole });
+            parametres.limites.jeux.actuels = jeuxCount;
+
+            return res.status(200).json({
+                success: true,
+                message: 'Paramètres de l\'école récupérés avec succès',
+                data: parametres,
+                timestamp: new Date().toISOString()
+            });
+
+        } catch (error) {
+            console.error('Erreur lors de la récupération des paramètres:', error);
+            return res.status(500).json({
+                success: false,
+                message: "Erreur lors de la récupération des paramètres de l'école",
+                error: process.env.NODE_ENV === 'development' ? error.message : undefined
+            });
+        }
+    },
+
+    // Méthode pour mettre à jour les paramètres de l'école
+    async updateParametresEcole(req, res) {
+        try {
+            // Récupérer l'ID de l'école depuis le token JWT
+            const adminData = {
+                id: req.user.id,
+                role: req.user.role,
+                ecole: req.user.ecole
+            };
+
+            // Vérifier que l'admin a une école associée
+            if (!adminData.ecole) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Aucune école associée à votre compte"
+                });
+            }
+
+            // Extraire les données à mettre à jour
+            const { libelle, adresse, ville, telephone, email, pays } = req.body;
+
+            // Préparer les données de mise à jour
+            const updateData = {};
+            if (libelle) updateData.libelle = libelle;
+            if (adresse) updateData.adresse = adresse;
+            if (ville) updateData.ville = ville;
+            if (telephone) updateData.telephone = telephone;
+            if (email) updateData.email = email;
+            if (pays) updateData.pays = pays;
+
+            // Mettre à jour l'école
+            const updatedEcole = await EcoleService.updateEcole(adminData.ecole, updateData, adminData);
+
+            return res.status(200).json({
+                success: true,
+                message: 'Paramètres de l\'école mis à jour avec succès',
+                data: updatedEcole,
+                timestamp: new Date().toISOString()
+            });
+
+        } catch (error) {
+            console.error('Erreur lors de la mise à jour des paramètres:', error);
+            return res.status(500).json({
+                success: false,
+                message: "Erreur lors de la mise à jour des paramètres de l'école",
+                error: process.env.NODE_ENV === 'development' ? error.message : undefined
+            });
+        }
     }
-};
+
+}; // ✅ IMPORTANT : Bien fermer l'objet EcoleController
 
 module.exports = EcoleController;
+

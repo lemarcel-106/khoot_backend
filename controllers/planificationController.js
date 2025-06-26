@@ -15,16 +15,66 @@ const PlanificationController = {
         }
     },
 
+ // Dans controllers/planificationController.js
+// Remplacer la méthode getPlanificationsByJeu existante
+
     async getPlanificationsByJeu(req, res) {
         try {
             const jeuId = req.params.id;
+            
+            // ✅ VALIDATION : Vérifier que l'ID du jeu est fourni
+            if (!jeuId) {
+                return res.status(400).json({
+                    success: false,
+                    message: "L'ID du jeu est requis"
+                });
+            }
+            
+            // ✅ VALIDATION : Vérifier que le jeu existe
+            const Jeu = require('../models/Jeu');
+            const jeuExists = await Jeu.findById(jeuId);
+            if (!jeuExists) {
+                return res.status(404).json({
+                    success: false,
+                    message: "Jeu non trouvé"
+                });
+            }
+            
+            // Récupérer les planifications
             const planifications = await PlanificationService.getPlanificationsByJeu(jeuId);
-            return res.status(200).json(planifications);
+            
+            // ✅ CORRECTION : Valider et nettoyer les données
+            const cleanedPlanifications = await PlanificationService.validateAndCleanPlanifications(planifications);
+            
+            // ✅ AMÉLIORATION : Ajouter des statistiques
+            const stats = {
+                totalPlanifications: cleanedPlanifications.length,
+                planificationsActives: cleanedPlanifications.filter(p => p.statut === 'en cours').length,
+                totalParticipants: cleanedPlanifications.reduce((total, p) => total + (p.participants?.length || 0), 0)
+            };
+            
+            return res.status(200).json({
+                success: true,
+                message: `${cleanedPlanifications.length} planification(s) récupérée(s) avec succès`,
+                data: cleanedPlanifications,
+                statistiques: stats,
+                jeu: {
+                    id: jeuExists._id,
+                    titre: jeuExists.titre
+                },
+                timestamp: new Date().toISOString()
+            });
+            
         } catch (error) {
-            return res.status(500).json({ message: error.message });
+            console.error('❌ Erreur getPlanificationsByJeu:', error);
+            return res.status(500).json({ 
+                success: false,
+                message: 'Erreur du serveur',
+                error: error.message 
+            });
         }
     },
-
+    
     async getPlanificationByPin(req, res) {
         try {
             const pin = req.body;

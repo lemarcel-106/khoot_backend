@@ -1,15 +1,26 @@
 const express = require('express');
 const router = express.Router();
 const pointController = require('../../controllers/pointController');
-const checkRequiredFields = require('../../middleware/checkRequiredFields')
+const checkRequiredFields = require('../../middleware/checkRequiredFields');
 const authenticateToken = require('../../middleware/authenticateToken');
 
-router.get('/points',  pointController.getAllPoints);
+router.get('/points', pointController.getAllPoints);
 
-router.post('/points', checkRequiredFields(['nature', 'valeur', 'description']), pointController.createPoint);
+router.post('/points', 
+    checkRequiredFields(['nature', 'valeur', 'description']), 
+    pointController.createPoint
+);
 
-router.put('/point/update/:id',authenticateToken, pointController.updatePoint);
+// ✅ CORRIGÉ : PUT -> POST
+router.post('/point/update/:id', 
+    authenticateToken, 
+    pointController.updatePoint
+);
 
-router.delete('/point/delete/:id',authenticateToken, pointController.deletePointById);
+// ✅ CORRIGÉ : DELETE -> POST
+router.post('/point/delete/:id', 
+    authenticateToken, 
+    pointController.deletePointById
+);
 
 module.exports = router;

@@ -20,7 +20,9 @@ const AdminSchema = new mongoose.Schema({
     },
     statut: {
         type: String,
-        required: true,
+        enum: ['actif', 'inactif', 'suspendu'],
+        default: 'actif',
+        required: true
     },
     phone: {
         type: String,

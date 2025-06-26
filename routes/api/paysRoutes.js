@@ -1,17 +1,29 @@
 const express = require('express');
 const PaysController = require('../../controllers/paysController');
 const router = express.Router();
-const checkRequiredFields= require('../../middleware/checkRequiredFields')
+const checkRequiredFields = require('../../middleware/checkRequiredFields');
 const authenticateToken = require('../../middleware/authenticateToken');
 
-router.post('/pays',checkRequiredFields(['libelle']), PaysController.createPays);
+// ✅ ROUTES CORRIGÉES
+router.post('/pays', checkRequiredFields(['libelle']), PaysController.createPays);
+router.get('/pays', PaysController.getAllPays); // ✅ CORRIGÉ : .use -> .get
+router.get('/pays/:id', PaysController.getPaysById); // ✅ CORRIGÉ : /id -> /:id
+router.post('/pays/update/:id', authenticateToken, PaysController.updatePays);
+router.post('/pays/delete/:id', authenticateToken, PaysController.deletePaysById);
 
-router.put('/pays/update/:id',authenticateToken, PaysController.updatePays);
+// Vérifier si un libellé existe
+router.get('/pays/check-libelle/:libelle', PaysController.checkPaysLibelleExists);
 
-router.delete('/pays/delete/:id',authenticateToken, PaysController.deletePaysById);
+// Récupérer les pays avec écoles
+router.get('/pays/avec-ecoles', PaysController.getPaysAvecEcoles);
 
-router.use('/pays', PaysController.getAllPays);
+// Mise à jour avec ID dans le body
+router.post('/pays/update', 
+    authenticateToken,
+    checkRequiredFields(['id']),
+    PaysController.updatePaysFromBody
+);
 
-router.get('/pays/id', PaysController.getPaysById);
+
 
 module.exports = router;

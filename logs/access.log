@@ -9184,3 +9184,14 @@
 2025-06-26T12:06:04.954Z [POST] /game/reponse-app 201 710.437 ms - 292 bytes - IP: ::1
 =======
 >>>>>>> b33eee180929f08df2ab5d035fc7b854ac1356c5
+2025-06-26T17:20:16.783Z [OPTIONS] /api/login 204 0.976 ms - 0 bytes - IP: ::ffff:127.0.0.1
+2025-06-26T17:20:16.963Z [POST] /api/login 200 177.738 ms - 440 bytes - IP: ::ffff:127.0.0.1
+2025-06-26T17:20:17.080Z [OPTIONS] /api/jeux 204 0.118 ms - 0 bytes - IP: ::ffff:127.0.0.1
+2025-06-26T17:20:17.339Z [GET] /api/jeux 200 244.759 ms - 5000 bytes - IP: ::ffff:127.0.0.1
+2025-06-26T17:20:17.589Z [GET] /api/jeux 304 245.320 ms - - bytes - IP: ::ffff:127.0.0.1
+2025-06-26T17:20:17.601Z [OPTIONS] /api/apprenant 204 0.142 ms - 0 bytes - IP: ::ffff:127.0.0.1
+2025-06-26T17:20:17.822Z [GET] /api/apprenant 200 216.768 ms - 1307 bytes - IP: ::ffff:127.0.0.1
+2025-06-26T17:20:17.832Z [OPTIONS] /api/planification 204 0.131 ms - 0 bytes - IP: ::ffff:127.0.0.1
+2025-06-26T17:20:18.197Z [GET] /api/planification 304 361.610 ms - - bytes - IP: ::ffff:127.0.0.1
+2025-06-26T17:20:22.792Z [OPTIONS] /api/jeux/delete/685c2bec5683c79996fa8e9d 204 0.203 ms - 0 bytes - IP: ::ffff:127.0.0.1
+2025-06-26T17:20:23.072Z [POST] /api/jeux/delete/685c2bec5683c79996fa8e9d 403 277.783 ms - 92 bytes - IP: ::ffff:127.0.0.1

@@ -10,9 +10,10 @@ const JeuSchema = new mongoose.Schema({
         required: false, // Image maintenant optionnelle
         default: null    // Valeur par défaut null
     },
+     // Dans models/Jeu.js, le champ createdBy doit ressembler à :
     createdBy: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
+        ref: 'Admin', // ✅ Pas 'User' !
         required: true
     },
     date: {

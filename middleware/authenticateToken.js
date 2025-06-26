@@ -1,30 +1,52 @@
+// middleware/authenticateToken.js
 const tokenUtils = require('../utils/token');
 
 const authenticateToken = (req, res, next) => {
-    // Récupérer l'en-tête Authorization
-    const authHeader = req.header('Authorization');
-
-
-    // Vérifier si l'en-tête Authorization est présent
-    if (!authHeader) {
-        return res.status(401).json({ message: 'Accès refusé, en-tête Authorization manquant' });
-    }
-
-    // Extraire le token après "Bearer "
-    const token = authHeader.replace('Bearer ', '');
-
-    // Vérifier si le token est vide ou incorrectement formaté
-    if (!token) {
-        return res.status(401).json({ message: 'Accès refusé, token manquant' });
-    }
-
     try {
+        // Récupérer l'en-tête Authorization
+        const authHeader = req.header('Authorization');
+
+        // Vérifier si l'en-tête Authorization est présent
+        if (!authHeader) {
+            return res.status(401).json({ 
+                success: false,
+                message: 'Accès refusé, en-tête Authorization manquant' 
+            });
+        }
+
+        // Extraire le token après "Bearer "
+        const token = authHeader.replace('Bearer ', '');
+
+        // Vérifier si le token est vide ou incorrectement formaté
+        if (!token) {
+            return res.status(401).json({ 
+                success: false,
+                message: 'Accès refusé, token manquant' 
+            });
+        }
+
         // Vérifier et décoder le token avec utilitaire de token
         const decoded = tokenUtils.verifyToken(token);
-        req.user = decoded; // Stocker les infos de l'utilisateur décodé dans req.user
+        
+        // ✅ IMPORTANT : Stocker les infos complètes de l'utilisateur
+        req.user = {
+            id: decoded.id,
+            email: decoded.email,
+            role: decoded.role,
+            nom: decoded.nom,
+            prenom: decoded.prenom,
+            ecole: decoded.ecole // ✅ ESSENTIEL : inclure l'école
+        };
+        
+        console.log('Token décodé avec succès:', req.user); // Debug - retirer en production
+        
         next(); // Continuer vers le prochain middleware ou contrôleur
     } catch (error) {
-        return res.status(403).json({ message: 'Token invalide' });
+        console.error('Erreur de vérification du token:', error);
+        return res.status(403).json({ 
+            success: false,
+            message: 'Token invalide' 
+        });
     }
 };
 

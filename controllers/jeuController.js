@@ -5,9 +5,10 @@ const logger = require('../logger');
  * Récupère la liste simple des jeux (titre, image, date, créateur)
  * Route: GET /api/jeux
  */
+// ✅ APRÈS (correction à appliquer):
 exports.getAllJeux = async (req, res) => {
     try {
-        // Récupérer les données de l'admin connecté depuis le middleware d'authentification
+        // ✅ CORRECTION: Gestion des restrictions pour enseignants
         const adminData = {
             id: req.user.id,
             role: req.user.role,
@@ -15,13 +16,24 @@ exports.getAllJeux = async (req, res) => {
             ecole: req.user.ecole,
         };
 
+        logger.info(`Récupération des jeux par ${req.user.email} (${req.user.role})`);
+
+        // ✅ MODIFICATION: Le service est maintenant responsable du filtrage selon le rôle
         const jeux = await jeuService.getAllJeuxSimple(adminData);
 
         res.status(200).json({
             success: true,
-            message: 'Liste des jeux récupérée avec succès',
+            message: req.user.role === 'enseignant' 
+                ? 'Vos jeux récupérés avec succès' 
+                : 'Liste des jeux récupérée avec succès',
             data: jeux,
-            total: jeux.length
+            total: jeux.length,
+            // ✅ AJOUT: Information sur le filtrage appliqué
+            filtrage: req.user.role === 'enseignant' 
+                ? 'Jeux créés par vous uniquement' 
+                : req.user.role === 'admin' 
+                    ? 'Jeux de votre école' 
+                    : 'Tous les jeux'
         });
     } catch (err) {
         logger.error('Erreur lors de la récupération des jeux:', err);
@@ -32,14 +44,13 @@ exports.getAllJeux = async (req, res) => {
         });
     }
 };
-
 /**
  * Récupère la liste détaillée des jeux avec toutes les relations
  * Route: GET /api/jeux/detailles
  */
 exports.getAllJeuxDetailles = async (req, res) => {
     try {
-        // Récupérer les données de l'admin connecté depuis le middleware d'authentification
+        // ✅ CORRECTION: Gestion des restrictions pour enseignants
         const adminData = {
             id: req.user.id,
             role: req.user.role,
@@ -47,13 +58,24 @@ exports.getAllJeuxDetailles = async (req, res) => {
             ecole: req.user.ecole,
         };
 
+        logger.info(`Récupération détaillée des jeux par ${req.user.email} (${req.user.role})`);
+
+        // ✅ MODIFICATION: Le service est maintenant responsable du filtrage selon le rôle
         const jeux = await jeuService.getAllJeuxDetailles(adminData);
 
         res.status(200).json({
             success: true,
-            message: 'Liste détaillée des jeux récupérée avec succès',
+            message: req.user.role === 'enseignant' 
+                ? 'Vos jeux détaillés récupérés avec succès' 
+                : 'Liste détaillée des jeux récupérée avec succès',
             data: jeux,
-            total: jeux.length
+            total: jeux.length,
+            // ✅ AJOUT: Information sur le filtrage appliqué
+            filtrage: req.user.role === 'enseignant' 
+                ? 'Jeux créés par vous uniquement' 
+                : req.user.role === 'admin' 
+                    ? 'Jeux de votre école' 
+                    : 'Tous les jeux'
         });
     } catch (err) {
         logger.error('Erreur lors de la récupération détaillée des jeux:', err);
@@ -64,7 +86,6 @@ exports.getAllJeuxDetailles = async (req, res) => {
         });
     }
 };
-
 /**
  * Récupère un jeu spécifique par son ID avec tous les détails
  * Route: GET /api/jeux/:id
@@ -83,6 +104,25 @@ exports.getJeuById = async (req, res) => {
 
         const jeu = await jeuService.getJeuById(id);
         
+        // Vérification des permissions selon le rôle
+        if (req.user.role !== 'super_admin') {
+            // Admin et enseignant ne peuvent voir que les jeux de leur école
+            if (!req.user.ecole || req.user.ecole.toString() !== jeu.ecole._id.toString()) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Accès refusé. Ce jeu n\'appartient pas à votre école.'
+                });
+            }
+            
+            // Enseignant ne peut voir que ses propres jeux
+            if (req.user.role === 'enseignant' && req.user.id !== jeu.createdBy._id.toString()) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Accès refusé. Vous ne pouvez voir que vos propres jeux.'
+                });
+            }
+        }
+        
         res.status(200).json({
             success: true,
             message: 'Jeu récupéré avec succès',
@@ -98,13 +138,126 @@ exports.getJeuById = async (req, res) => {
 };
 
 /**
+ * Récupère tous les jeux créés par un enseignant spécifique
+ * Route: GET /api/jeux/enseignant/:enseignantId
+ */
+exports.getJeuxByEnseignant = async (req, res) => {
+    try {
+        const { enseignantId } = req.params;
+        const currentUser = req.user;
+        
+        logger.info(`Récupération des jeux de l'enseignant ${enseignantId} par ${currentUser.email} (${currentUser.role})`);
+
+        // Validation de l'ID de l'enseignant
+        if (!enseignantId) {
+            return res.status(400).json({
+                success: false,
+                message: "L'ID de l'enseignant est requis"
+            });
+        }
+
+        // Gestion des permissions selon le rôle
+        if (currentUser.role === 'enseignant') {
+            // Les enseignants ne peuvent voir que leurs propres jeux
+            if (currentUser.id !== enseignantId) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Accès refusé. Vous ne pouvez consulter que vos propres jeux.'
+                });
+            }
+        } else if (currentUser.role === 'admin') {
+            // Les admins peuvent voir les jeux des enseignants de leur école
+            const AdminService = require('../services/adminService');
+            const enseignant = await AdminService.getAdminById(enseignantId);
+            
+            if (!enseignant) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'Enseignant non trouvé'
+                });
+            }
+            
+            if (!currentUser.ecole || enseignant.ecole?.toString() !== currentUser.ecole.toString()) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Accès refusé. Cet enseignant n\'appartient pas à votre école.'
+                });
+            }
+        }
+        // Les super_admins ont accès à tous les jeux (pas de restriction)
+
+        // Récupérer les jeux créés par l'enseignant avec tous les détails
+        const jeux = await jeuService.getJeuxByEnseignant(enseignantId, currentUser);
+
+        // ✅ OPTIMISATION : Le service gère déjà le populate complet, plus besoin d'enrichissement manuel
+        // Suppression du Promise.all qui était redondant
+
+        // Statistiques supplémentaires
+        const stats = {
+            totalJeux: jeux.length,
+            jeuxAvecQuestions: jeux.filter(jeu => jeu.questions && jeu.questions.length > 0).length,
+            jeuxAvecPlanifications: jeux.filter(jeu => jeu.planification && jeu.planification.length > 0).length,
+            dernierJeuCree: jeux.length > 0 ? 
+                jeux.sort((a, b) => new Date(b.date) - new Date(a.date))[0].date : null
+        };
+
+        res.status(200).json({
+            success: true,
+            message: `${jeux.length} jeu(x) récupéré(s) avec succès pour l'enseignant`,
+            data: {
+                enseignant: {
+                    id: enseignantId,
+                    nom: jeux[0]?.createdBy?.nom || 'Inconnu',
+                    prenom: jeux[0]?.createdBy?.prenom || 'Inconnu',
+                    email: jeux[0]?.createdBy?.email || 'Inconnu',
+                    role: jeux[0]?.createdBy?.role || 'Inconnu',
+                    matricule: jeux[0]?.createdBy?.matricule || 'Inconnu',
+                    ecole: jeux[0]?.createdBy?.ecole || null
+                },
+                jeux: jeux, // ✅ Plus simple : directement les jeux du service
+                statistiques: stats
+            },
+            total: jeux.length,
+            timestamp: new Date().toISOString()
+        });
+
+    } catch (error) {
+        logger.error(`Erreur lors de la récupération des jeux de l'enseignant ${req.params.enseignantId}:`, error);
+        res.status(500).json({
+            success: false,
+            message: 'Erreur du serveur lors de la récupération des jeux',
+            error: error.message
+        });
+    }
+};
+
+/**
  * Crée un nouveau jeu
  * Route: POST /api/jeux
  */
+
 exports.createJeu = async (req, res) => {
     try {
         const { titre } = req.body;
-        logger.info('Creation de jeu par utilisateur:', req.user.id);
+        logger.info(`Création de jeu par ${req.user.email} (${req.user.role})`);
+
+        // Vérifier que l'utilisateur a une école
+        if (!req.user.ecole) {
+            return res.status(400).json({
+                success: false,
+                message: 'Aucune école assignée à votre compte. Impossible de créer un jeu.'
+            });
+        }
+
+        // ✅ AJOUT : Vérifier que l'utilisateur existe bien dans la base
+        const Admin = require('../models/Admin');
+        const currentAdmin = await Admin.findById(req.user.id);
+        if (!currentAdmin) {
+            return res.status(401).json({
+                success: false,
+                message: 'Utilisateur non trouvé dans la base de données'
+            });
+        }
 
         const createdBy = req.user.id;
 
@@ -125,6 +278,25 @@ exports.createJeu = async (req, res) => {
         // Crée le jeu via le service jeuService
         const { message, statut, savedJeu } = await jeuService.createJeu(jeuData);
 
+        // ✅ VÉRIFICATION SUPPLÉMENTAIRE : Si createdBy est toujours null
+        if (!savedJeu.createdBy) {
+            logger.warn('createdBy est null, correction...');
+            savedJeu.createdBy = {
+                _id: currentAdmin._id,
+                nom: currentAdmin.nom,
+                prenom: currentAdmin.prenom,
+                email: currentAdmin.email,
+                role: currentAdmin.role,
+                matricule: currentAdmin.matricule,
+                phone: currentAdmin.phone,
+                genre: currentAdmin.genre,
+                statut: currentAdmin.statut,
+                adresse: currentAdmin.adresse
+            };
+        }
+
+        logger.info(`Jeu créé avec succès par ${req.user.email}: ${savedJeu.titre}`);
+
         // Réponse incluant le statut, message, et les informations du jeu
         res.status(201).json({
             success: true,
@@ -142,8 +314,9 @@ exports.createJeu = async (req, res) => {
     }
 };
 
+
 /**
- * Récupère un jeu par son PIN
+ * Récupère un jeu par son PIN (ACCÈS PUBLIC - sans authentification)
  * Route: POST /api/jeux/pin
  */
 exports.getJeuDetailsByPin = async (req, res) => {
@@ -156,6 +329,9 @@ exports.getJeuDetailsByPin = async (req, res) => {
                 message: 'PIN requis'
             });
         }
+
+        // Route publique - pas de vérification d'authentification
+        logger.info(`Récupération de jeu par PIN: ${pin}`);
 
         const jeu = await jeuService.getJeuByPin(pin);
         res.status(200).json({
@@ -175,12 +351,33 @@ exports.getJeuDetailsByPin = async (req, res) => {
 
 /**
  * Met à jour un jeu existant
- * Route: PUT /api/jeux/update/:id
+ * Route: POST /api/jeux/update/:id
  */
 exports.updateJeu = async (req, res) => {
     try {
         const jeuId = req.params.id;
         const jeuData = req.body;
+        
+        // Vérification des permissions avant mise à jour
+        const jeuExistant = await jeuService.getJeuById(jeuId);
+        
+        if (req.user.role !== 'super_admin') {
+            // Vérifier que le jeu appartient à l'école de l'utilisateur
+            if (!req.user.ecole || req.user.ecole.toString() !== jeuExistant.ecole._id.toString()) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Accès refusé. Ce jeu n\'appartient pas à votre école.'
+                });
+            }
+            
+            // Enseignant ne peut modifier que ses propres jeux
+            if (req.user.role === 'enseignant' && req.user.id !== jeuExistant.createdBy._id.toString()) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Accès refusé. Vous ne pouvez modifier que vos propres jeux.'
+                });
+            }
+        }
         
         // Si une nouvelle image est fournie, l'ajouter aux données
         if (req.file) {
@@ -189,6 +386,9 @@ exports.updateJeu = async (req, res) => {
         }
         
         const updatedJeu = await jeuService.updateJeu(jeuId, jeuData);
+        
+        logger.info(`Jeu mis à jour par ${req.user.email}: ${updatedJeu.titre}`);
+        
         res.status(200).json({
             success: true,
             message: 'Jeu mis à jour avec succès',
@@ -206,7 +406,7 @@ exports.updateJeu = async (req, res) => {
 
 /**
  * Supprime un jeu
- * Route: DELETE /api/jeux/delete/:id
+ * Route: POST /api/jeux/delete/:id
  */
 exports.deleteJeuById = async (req, res) => {
     try {
@@ -219,7 +419,31 @@ exports.deleteJeuById = async (req, res) => {
             });
         }
 
+        // Vérification des permissions avant suppression
+        const jeuExistant = await jeuService.getJeuById(jeuId);
+        
+        if (req.user.role !== 'super_admin') {
+            // Vérifier que le jeu appartient à l'école de l'utilisateur
+            if (!req.user.ecole || req.user.ecole.toString() !== jeuExistant.ecole._id.toString()) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Accès refusé. Ce jeu n\'appartient pas à votre école.'
+                });
+            }
+            
+            // Enseignant ne peut supprimer que ses propres jeux
+            if (req.user.role === 'enseignant' && req.user.id !== jeuExistant.createdBy._id.toString()) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Accès refusé. Vous ne pouvez supprimer que vos propres jeux.'
+                });
+            }
+        }
+
         await jeuService.deleteJeuById(jeuId);
+        
+        logger.info(`Jeu supprimé par ${req.user.email}: ${jeuExistant.titre}`);
+        
         res.status(200).json({
             success: true,
             message: 'Jeu supprimé avec succès'

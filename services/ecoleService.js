@@ -22,28 +22,45 @@ const EcoleService = {
         try {
             let query = Ecole.findById(ecoleId);
             
-            // MODIFICATION : Si l'admin n'est pas super_admin, on vérifie qu'il appartient à cette école
+            // ✅ CORRECTION : Améliorer la vérification des permissions
             if (adminData && adminData.role !== 'super_admin') {
+                console.log('🔍 Vérification permissions pour admin normal:');
+                console.log('- Admin ID:', adminData.id);
+                console.log('- Admin role:', adminData.role);
+                console.log('- Admin ecole:', adminData.ecole);
+                console.log('- Ecole demandée:', ecoleId);
+                
                 // Vérifier que l'admin a cette école assignée
                 const admin = await Admin.findById(adminData.id);
-                if (!admin || !admin.ecole || admin.ecole.toString() !== ecoleId) {
+                console.log('- Admin trouvé:', admin ? `${admin.email} (ecole: ${admin.ecole})` : 'Non trouvé');
+                
+                // ✅ CORRECTION : Utiliser admin.ecole au lieu de adminData.ecole si adminData.ecole est undefined
+                const adminEcoleId = adminData.ecole || admin?.ecole;
+                
+                if (!admin || !adminEcoleId || adminEcoleId.toString() !== ecoleId.toString()) {
+                    console.log('❌ Accès refusé:');
+                    console.log('- Admin ecole ID:', adminEcoleId);
+                    console.log('- Ecole demandée:', ecoleId);
+                    console.log('- Match:', adminEcoleId?.toString() === ecoleId.toString());
                     throw new Error('Accès non autorisé à cette école');
                 }
+                
+                console.log('✅ Accès autorisé à l\'école');
             }
-
+    
             const ecole = await query
                 .populate('apprenants')
                 .populate('pays')
                 .populate('abonnementActuel')
                 .lean();
-
+    
             if (!ecole) return null;
-
+    
             // MODIFICATION : Récupérer l'admin de cette école
             const adminEcole = await Admin.findOne({ ecole: ecoleId })
                 .populate('pays', 'libelle')
                 .populate('role', 'libelle');
-
+    
             const historique = (ecole.abonnementHistorique || []).map(h => ({
                 date: h.date ? h.date.toISOString().slice(0, 10) : null,
                 expdate: h.expdate ? h.expdate.toISOString().slice(0, 10) : null,
@@ -58,16 +75,17 @@ const EcoleService = {
                     dureeUtilisee: h.data.dureeUtilisee
                 }
             }));
-
+    
             const finalResponse = {
                 ...ecole,
                 admin: adminEcole, // Ajouter l'admin trouvé
                 statusAbonnement: !!ecole.abonnementActuel,
                 refAbonnement: ecole.abonnementActuel?._id || null,
             };
-
+    
             return finalResponse;
         } catch (error) {
+            console.error('❌ Erreur dans getEcoleById:', error.message);
             throw new Error('Erreur lors de la récupération de l\'école : ' + error.message);
         }
     },

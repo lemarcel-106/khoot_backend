@@ -1,3 +1,4 @@
+// middleware/upload.js - VERSION CORRIGÉE
 const multer = require('multer');
 const path = require('path');
 
@@ -7,7 +8,10 @@ const imageStorage = multer.diskStorage({
         cb(null, './public/uploads/images');
     },
     filename: (req, file, cb) => {
-        cb(null, Date.now() + path.extname(file.originalname));
+        const filename = Date.now() + path.extname(file.originalname);
+        // ✅ CORRECTION : Stocker le chemin complet accessible depuis le web
+        req.fullImagePath = `/uploads/images/${filename}`;
+        cb(null, filename);
     }
 });
 
@@ -17,7 +21,10 @@ const imageAvatar = multer.diskStorage({
         cb(null, './public/uploads/avatars');
     },
     filename: (req, file, cb) => {
-        cb(null, Date.now() + path.extname(file.originalname));
+        const filename = Date.now() + path.extname(file.originalname);
+        // ✅ CORRECTION : Stocker le chemin complet accessible depuis le web
+        req.fullAvatarPath = `/uploads/avatars/${filename}`;
+        cb(null, filename);
     }
 });
 
@@ -27,7 +34,10 @@ const documentStorage = multer.diskStorage({
         cb(null, './public/uploads/documents');
     },
     filename: (req, file, cb) => {
-        cb(null, Date.now() + path.extname(file.originalname));
+        const filename = Date.now() + path.extname(file.originalname);
+        // ✅ CORRECTION : Stocker le chemin complet accessible depuis le web
+        req.fullDocumentPath = `/uploads/documents/${filename}`;
+        cb(null, filename);
     }
 });
 

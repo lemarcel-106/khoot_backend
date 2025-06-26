@@ -1,3 +1,4 @@
+// ✅ ASSUREZ-VOUS que votre generateToken inclut l'école :
 const jwt = require('jsonwebtoken');
 
 exports.generateToken = (user) => {
@@ -6,7 +7,7 @@ exports.generateToken = (user) => {
     name: user.name,
     email: user.email,
     role: user.role,
-    ecole: user.ecole,
+    ecole: user.ecole, // ✅ ESSENTIEL : inclure l'école dans le token
     prenom: user.prenom,
     nom: user.nom,
   };
@@ -15,11 +16,9 @@ exports.generateToken = (user) => {
   return token;
 };
 
-
 exports.verifyToken = (token) => {
   return jwt.verify(token, process.env.JWT_SECRET);
 };
-
 
 exports.decodedToken = (token) => {
   const decodedToken = jwt.verify(token, process.env.JWT_SECRET);
