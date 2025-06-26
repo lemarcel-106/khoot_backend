@@ -4,10 +4,7 @@ const socketIo = require("socket.io");
 const configureSocket = (server) => {
   const io = socketIo(server, {
     cors: {
-      origin: process.env.ALLOWED_ORIGINS?.split(",") || [
-        "http://localhost:3001",
-        "http://localhost:3000",
-      ],
+      origin: "*",
       methods: ["GET", "POST"],
     },
   });
