@@ -132,6 +132,8 @@ const authService = {
 
             // Recherche de l'apprenant par son matricule dans la base de données
             const apprenant = await apprenantService.getParticipantByMatricule(matricule);
+
+            console.log('Apprenant trouvé:', apprenant);
             
             // Vérifier si l'apprenant existe
             if (!apprenant) {
