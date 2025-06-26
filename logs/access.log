@@ -9126,6 +9126,7 @@
 2025-06-26T09:36:25.869Z [OPTIONS] /game/participant 204 0.181 ms - 0 bytes - IP: ::1
 2025-06-26T09:36:26.473Z [POST] /game/participant 201 599.906 ms - 182 bytes - IP: ::1
 2025-06-26T09:36:27.522Z [GET] /game/planification/685b01144adbf2a37b65783e 200 1040.131 ms - 117796 bytes - IP: ::1
+<<<<<<< HEAD
 2025-06-26T11:48:56.391Z [OPTIONS] /game/planification 204 1.176 ms - 0 bytes - IP: ::1
 2025-06-26T11:48:56.883Z [POST] /game/planification 200 488.050 ms - 1787 bytes - IP: ::1
 2025-06-26T11:49:16.053Z [OPTIONS] /game/login-participant 204 0.636 ms - 0 bytes - IP: ::1
@@ -9181,3 +9182,5 @@
 2025-06-26T12:06:03.619Z [POST] /game/reponse-app 201 773.524 ms - 290 bytes - IP: ::1
 2025-06-26T12:06:04.237Z [POST] /game/reponse-app 201 609.988 ms - 292 bytes - IP: ::1
 2025-06-26T12:06:04.954Z [POST] /game/reponse-app 201 710.437 ms - 292 bytes - IP: ::1
+=======
+>>>>>>> b33eee180929f08df2ab5d035fc7b854ac1356c5
