@@ -1,5 +1,34 @@
 const AdminService = require('../services/adminService');
 const generateMatricule = require('../utils/generateMatriculeAdmin');
+const bcrypt = require('bcryptjs');
+
+
+
+// ✅ FONCTION HELPER POUR TROUVER L'ENSEIGNANT LE PLUS ACTIF
+async function getMostActiveTeacher(enseignants) {
+    try {
+        let mostActive = null;
+        let maxJeux = 0;
+
+        for (const enseignant of enseignants) {
+            const jeux = await AdminService.getJeuxParEnseignant(enseignant._id);
+            if (jeux.length > maxJeux) {
+                maxJeux = jeux.length;
+                mostActive = {
+                    nom: enseignant.nom,
+                    prenom: enseignant.prenom,
+                    jeuxCrees: jeux.length
+                };
+            }
+        }
+
+        return mostActive;
+    } catch (error) {
+        console.error('Erreur getMostActiveTeacher:', error);
+        return null;
+    }
+}
+
 
 const AdminController = {
   
@@ -467,43 +496,232 @@ const AdminController = {
         }
     },
 
-    async getDashboardEnseignant(req, res) {
-        try {
-            const { id } = req.params;
-            const currentUser = req.user;
+ /**
+ * Dashboard pour l'utilisateur connecté (enseignant/admin)
+ */
+async getDashboardEnseignant(req, res) {
+    try {
+        const currentUser = req.user;
+        
+        console.log('🔍 DEBUG - Utilisateur connecté:', {
+            id: currentUser.id,
+            role: currentUser.role,
+            email: currentUser.email,
+            statut: currentUser.statut
+        });
 
-            // Vérifications de permissions (enseignant ne peut voir que ses stats)
-            if (currentUser.role === 'enseignant' && currentUser.id !== id) {
-                return res.status(403).json({
-                    success: false,
-                    message: 'Accès refusé'
+        // Vérification basique
+        if (!currentUser.id) {
+            return res.status(401).json({
+                success: false,
+                message: 'Utilisateur non identifié'
+            });
+        }
+
+        // Pour cette route, on accepte enseignants et admins
+        if (!['enseignant', 'admin', 'super_admin'].includes(currentUser.role)) {
+            return res.status(403).json({
+                success: false,
+                message: 'Accès refusé. Rôle non autorisé.'
+            });
+        }
+
+        try {
+            let jeux = [];
+            let planifications = [];
+            let enseignantsGeres = [];
+
+            // ✅ LOGIQUE DIFFÉRENTE SELON LE RÔLE
+            if (currentUser.role === 'enseignant') {
+                // ENSEIGNANT : Ses propres jeux et planifications
+                jeux = await AdminService.getJeuxParEnseignant(currentUser.id);
+                planifications = await AdminService.getPlanificationsParEnseignant(currentUser.id);
+                
+                console.log('👨‍🏫 ENSEIGNANT - Jeux personnels:', jeux.length);
+                console.log('👨‍🏫 ENSEIGNANT - Planifications personnelles:', planifications.length);
+
+            } else if (currentUser.role === 'admin') {
+                // ADMIN : Jeux et planifications de TOUS les enseignants de son école
+                
+                // 1. Récupérer tous les enseignants de l'école
+                enseignantsGeres = await AdminService.getAdminsByEcole(currentUser.ecole)
+                    .then(admins => admins.filter(admin => admin.role === 'enseignant'));
+                
+                console.log('🏫 ADMIN - Enseignants dans l\'école:', enseignantsGeres.length);
+
+                // 2. Récupérer les jeux de tous ces enseignants
+                const jeuxPromises = enseignantsGeres.map(enseignant => 
+                    AdminService.getJeuxParEnseignant(enseignant._id)
+                );
+                const jeuxParEnseignant = await Promise.all(jeuxPromises);
+                jeux = jeuxParEnseignant.flat(); // Aplatir le tableau
+
+                // 3. Récupérer les planifications de tous ces enseignants
+                const planifPromises = enseignantsGeres.map(enseignant => 
+                    AdminService.getPlanificationsParEnseignant(enseignant._id)
+                );
+                const planifParEnseignant = await Promise.all(planifPromises);
+                planifications = planifParEnseignant.flat(); // Aplatir le tableau
+
+                console.log('🏫 ADMIN - Total jeux école:', jeux.length);
+                console.log('🏫 ADMIN - Total planifications école:', planifications.length);
+
+            } else if (currentUser.role === 'super_admin') {
+                // SUPER_ADMIN : Accès global (à implémenter selon vos besoins)
+                jeux = []; // Pour l'instant, données vides
+                planifications = [];
+                console.log('⚡ SUPER_ADMIN - Accès global (à implémenter)');
+            }
+            
+            // Compter les apprenants de l'école
+            let apprenantsEcole = 0;
+            let apprenantsInvites = 0;
+            
+            if (currentUser.ecole) {
+                const Apprenant = require('../models/Apprenant');
+                apprenantsEcole = await Apprenant.countDocuments({ 
+                    ecole: currentUser.ecole,
+                    type: 'ecole' 
+                });
+                
+                apprenantsInvites = await Apprenant.countDocuments({ 
+                    ecole: currentUser.ecole,
+                    type: 'invite'
                 });
             }
 
-            const dashboard = await AdminService.getDashboardStats(id);
+            // Calculer les statistiques détaillées
+            const jeuxActifs = jeux.filter(jeu => {
+                return jeu.planification && jeu.planification.length > 0 && 
+                       jeu.planification.some(p => p.statut === 'en cours');
+            }).length;
+
+            const planificationsEnCours = planifications.filter(p => p.statut === 'en cours').length;
+            const planificationsTerminees = planifications.filter(p => p.statut === 'terminé').length;
+
+            // Calculer le total des participations
+            const participationsTotales = planifications.reduce((total, p) => {
+                return total + (p.participants ? p.participants.length : 0);
+            }, 0);
+
+            // Dernière activité
+            const derniereActivite = jeux.length > 0 
+                ? jeux.sort((a, b) => new Date(b.date) - new Date(a.date))[0].date
+                : null;
+
+            // ✅ STATISTIQUES SPÉCIFIQUES PAR RÔLE
+            let statistiquesSpecifiques = {};
             
+            if (currentUser.role === 'admin') {
+                statistiquesSpecifiques = {
+                    enseignantsGeres: enseignantsGeres.length,
+                    enseignantsActifs: enseignantsGeres.filter(e => e.statut === 'actif').length,
+                    moyenneJeuxParEnseignant: enseignantsGeres.length > 0 
+                        ? Math.round(jeux.length / enseignantsGeres.length) 
+                        : 0,
+                    enseignantLePlusActif: enseignantsGeres.length > 0 
+                        ? await getMostActiveTeacher(enseignantsGeres) 
+                        : null
+                };
+            }
+
+            // Réponse réussie
             res.status(200).json({
                 success: true,
+                message: 'Dashboard récupéré avec succès',
                 data: {
-                    jeuxCrees: dashboard.totalJeux,
-                    planificationsTotal: dashboard.totalPlanifications,
-                    apprenantsEcole: dashboard.apprenantsEcole,
-                    apprenantsInvites: dashboard.apprenantsInvites,
-                    derniereActivite: dashboard.derniereActivite,
+                    // Statistiques principales
+                    jeuxCrees: jeux.length,
+                    planificationsTotal: planifications.length,
+                    apprenantsEcole: apprenantsEcole,
+                    apprenantsInvites: apprenantsInvites,
+                    
+                    // Statistiques détaillées
                     statistiquesDetaillees: {
-                        jeuxActifs: dashboard.jeuxActifs,
-                        planificationsEnCours: dashboard.planificationsEnCours,
-                        participationsTotales: dashboard.participationsTotales
-                    }
+                        jeuxActifs: jeuxActifs,
+                        planificationsEnCours: planificationsEnCours,
+                        planificationsTerminees: planificationsTerminees,
+                        participationsTotales: participationsTotales,
+                        ...statistiquesSpecifiques
+                    },
+
+                    // Informations utilisateur
+                    utilisateur: {
+                        id: currentUser.id,
+                        nom: currentUser.nom,
+                        prenom: currentUser.prenom,
+                        email: currentUser.email,
+                        role: currentUser.role,
+                        matricule: currentUser.matricule
+                    },
+
+                    // Métadonnées
+                    derniereActivite: derniereActivite,
+                    dateGeneration: new Date().toISOString(),
+                    scope: currentUser.role === 'enseignant' 
+                        ? 'Personnel' 
+                        : currentUser.role === 'admin'
+                            ? 'École'
+                            : 'Système',
+                    
+                    // Informations de contexte
+                    contexte: currentUser.role === 'enseignant' 
+                        ? 'Vos jeux et planifications personnels'
+                        : currentUser.role === 'admin'
+                            ? `Jeux et planifications de ${enseignantsGeres.length} enseignant(s) de votre école`
+                            : 'Vue système globale'
                 }
             });
-        } catch (error) {
-            res.status(500).json({
-                success: false,
-                message: error.message
+
+        } catch (serviceError) {
+            console.error('❌ Erreur services:', serviceError);
+            
+            // En cas d'erreur de service, retourner des données vides plutôt qu'une erreur
+            res.status(200).json({
+                success: true,
+                message: 'Dashboard récupéré avec données partielles',
+                data: {
+                    jeuxCrees: 0,
+                    planificationsTotal: 0,
+                    apprenantsEcole: 0,
+                    apprenantsInvites: 0,
+                    statistiquesDetaillees: {
+                        jeuxActifs: 0,
+                        planificationsEnCours: 0,
+                        planificationsTerminees: 0,
+                        participationsTotales: 0
+                    },
+                    utilisateur: {
+                        id: currentUser.id,
+                        nom: currentUser.nom,
+                        prenom: currentUser.prenom,
+                        email: currentUser.email,
+                        role: currentUser.role
+                    },
+                    derniereActivite: null,
+                    dateGeneration: new Date().toISOString(),
+                    scope: 'Données partielles',
+                    erreur: 'Certaines données n\'ont pas pu être récupérées'
+                }
             });
         }
-    },
+
+    } catch (error) {
+        console.error('❌ Erreur dashboard complète:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Erreur lors de la récupération du dashboard',
+            error: error.message,
+            debug: {
+                user: req.user ? {
+                    id: req.user.id,
+                    role: req.user.role,
+                    email: req.user.email
+                } : 'Aucun utilisateur'
+            }
+        });
+    }
+},
 
     // Nouvelle méthode pour récupérer le profil de l'admin connecté
     async getMyProfile(req, res) {
@@ -848,7 +1066,189 @@ async changePassword(req, res) {
                 error: error.message
             });
         }
+    },
+
+// ===============================================
+// NOUVELLES FONCTIONS À AJOUTER
+// ===============================================
+
+/**
+ * Changer le mot de passe de l'admin connecté
+ */
+async changePassword(req, res) {
+    try {
+        const { currentPassword, newPassword, confirmPassword } = req.body;
+        const userId = req.user.id;
+
+        // Validation des mots de passe
+        if (newPassword !== confirmPassword) {
+            return res.status(400).json({
+                success: false,
+                message: 'Les nouveaux mots de passe ne correspondent pas'
+            });
+        }
+
+        if (newPassword.length < 6) {
+            return res.status(400).json({
+                success: false,
+                message: 'Le nouveau mot de passe doit contenir au moins 6 caractères'
+            });
+        }
+
+        // Récupérer l'utilisateur actuel
+        const admin = await AdminService.getAdminById(userId);
+        if (!admin) {
+            return res.status(404).json({
+                success: false,
+                message: 'Utilisateur non trouvé'
+            });
+        }
+
+        // Vérifier l'ancien mot de passe
+        const isValidPassword = await bcrypt.compare(currentPassword, admin.password);
+        if (!isValidPassword) {
+            return res.status(400).json({
+                success: false,
+                message: 'Mot de passe actuel incorrect'
+            });
+        }
+
+        // Hasher le nouveau mot de passe
+        const hashedPassword = await bcrypt.hash(newPassword, 12);
+
+        // Mettre à jour le mot de passe
+        await AdminService.updateAdmin(userId, {
+            password: hashedPassword,
+            passwordChangedAt: new Date()
+        });
+
+        res.status(200).json({
+            success: true,
+            message: 'Mot de passe modifié avec succès'
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: 'Erreur lors du changement de mot de passe',
+            error: error.message
+        });
     }
+},
+
+/**
+ * Récupérer le dashboard consolidé d'un enseignant
+ */
+async getDashboardEnseignant(req, res) {
+    try {
+        const { id } = req.params;
+        const currentUser = req.user;
+
+        // Vérifications de permissions
+        if (currentUser.role === 'enseignant' && currentUser.id !== id) {
+            return res.status(403).json({
+                success: false,
+                message: 'Accès refusé. Vous ne pouvez voir que vos propres statistiques.'
+            });
+        }
+
+        // Récupérer les informations de l'enseignant
+        const enseignant = await AdminService.getAdminById(id);
+        if (!enseignant) {
+            return res.status(404).json({
+                success: false,
+                message: 'Enseignant non trouvé'
+            });
+        }
+
+        // Si c'est un admin qui consulte, vérifier que l'enseignant appartient à son école
+        if (currentUser.role === 'admin') {
+            if (enseignant.ecole?.toString() !== currentUser.ecole?.toString()) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Accès refusé. Cet enseignant n\'appartient pas à votre école.'
+                });
+            }
+        }
+
+        // Récupérer les statistiques via les services
+        const jeux = await AdminService.getJeuxParEnseignant(id);
+        const planifications = await AdminService.getPlanificationsParEnseignant(id);
+        
+        // Compter les apprenants de l'école
+        const Apprenant = require('../models/Apprenant');
+        const apprenantsEcole = await Apprenant.countDocuments({ 
+            ecole: enseignant.ecole,
+            type: 'ecole' 
+        });
+        
+        // Compter les apprenants invités créés par cet enseignant
+        const apprenantsInvites = await Apprenant.countDocuments({ 
+            ecole: enseignant.ecole,
+            type: 'invite'
+            // TODO: Ajouter un champ createdBy si nécessaire
+        });
+
+        // Calculer les statistiques détaillées
+        const jeuxActifs = jeux.filter(jeu => {
+            return jeu.planification && jeu.planification.some(p => p.statut === 'en cours');
+        }).length;
+
+        const planificationsEnCours = planifications.filter(p => p.statut === 'en cours').length;
+        const planificationsTerminees = planifications.filter(p => p.statut === 'terminé').length;
+
+        // Calculer le total des participations
+        const participationsTotales = planifications.reduce((total, p) => {
+            return total + (p.participants ? p.participants.length : 0);
+        }, 0);
+
+        // Trouver la dernière activité
+        const derniereActivite = jeux.length > 0 
+            ? jeux.sort((a, b) => new Date(b.date) - new Date(a.date))[0].date
+            : null;
+
+        res.status(200).json({
+            success: true,
+            message: 'Dashboard récupéré avec succès',
+            data: {
+                // Statistiques principales
+                jeuxCrees: jeux.length,
+                planificationsTotal: planifications.length,
+                apprenantsEcole: apprenantsEcole,
+                apprenantsInvites: apprenantsInvites,
+                
+                // Statistiques détaillées
+                statistiquesDetaillees: {
+                    jeuxActifs: jeuxActifs,
+                    planificationsEnCours: planificationsEnCours,
+                    planificationsTerminees: planificationsTerminees,
+                    participationsTotales: participationsTotales
+                },
+
+                // Informations contextuelles
+                derniereActivite: derniereActivite,
+                enseignant: {
+                    id: enseignant._id,
+                    nom: enseignant.nom,
+                    prenom: enseignant.prenom,
+                    email: enseignant.email,
+                    ecole: enseignant.ecole
+                },
+
+                // Métadonnées
+                dateGeneration: new Date().toISOString(),
+                scope: currentUser.role === 'enseignant' ? 'Personnel' : 'Supervision'
+            }
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: 'Erreur lors de la récupération du dashboard',
+            error: error.message
+        });
+    }
+}
+
+
 };
 
 module.exports = AdminController;

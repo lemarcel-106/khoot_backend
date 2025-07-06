@@ -1,8 +1,8 @@
-// routes/api/adminRoutes.js - VERSION CORRIGÉE
 const express = require('express');
 const AdminController = require('../../controllers/adminController');
 const router = express.Router();
 const authenticateToken = require('../../middleware/authenticateToken');
+const checkRequiredFields = require('../../middleware/checkRequiredFields'); // ✅ LIGNE À AJOUTER
 const { checkSubscriptionLimits } = require('../../middleware/subscriptionLimitsMiddleware');
 
 // Import des middlewares de validation conditionnelle
@@ -192,16 +192,23 @@ router.post('/profile/update',
 );
 
 
-router.get('/enseignants/:id/dashboard', 
+/**
+ * Dashboard consolidé pour un enseignant
+ */
+router.get('/dashboard', 
     authenticateToken,
     AdminController.getDashboardEnseignant
 );
 
+/**
+ * Changer le mot de passe de l'admin connecté
+ */
 router.post('/admin/profile/change-password', 
     authenticateToken,
     checkRequiredFields(['currentPassword', 'newPassword', 'confirmPassword']),
     AdminController.changePassword
 );
+
 // ===============================================
 // ROUTES DE GESTION AVANCÉE (SUPER_ADMIN SEULEMENT)
 // ===============================================

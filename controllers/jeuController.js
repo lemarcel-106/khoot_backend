@@ -1,6 +1,8 @@
 const jeuService = require('../services/jeuService');
 const logger = require('../logger');
 
+
+
 /**
  * Récupère la liste simple des jeux (titre, image, date, créateur)
  * Route: GET /api/jeux
@@ -489,3 +491,415 @@ exports.deleteJeuById = async (req, res) => {
         });
     }
 };
+
+
+
+
+// ===============================================
+// NOUVELLES FONCTIONS À AJOUTER
+// ===============================================
+
+/**
+ * Rechercher dans les jeux de l'enseignant connecté
+ */
+exports.searchMesJeux  =  async (req, res) =>  {
+    try {
+        const { terme } = req.params;
+        const currentUser = req.user;
+
+        if (!terme || terme.trim() === '') {
+            return res.status(400).json({
+                success: false,
+                message: 'Terme de recherche requis'
+            });
+        }
+
+        const Jeu = require('../models/Jeu');
+        let query = {};
+
+        // Construire la requête selon le rôle
+        if (currentUser.role === 'enseignant') {
+            query.createdBy = currentUser.id;
+        } else if (currentUser.role === 'admin') {
+            query.ecole = currentUser.ecole;
+        }
+        // Les super_admins peuvent rechercher dans tous les jeux
+
+        // Ajouter les critères de recherche
+        query.$or = [
+            { titre: { $regex: terme, $options: 'i' } },
+            { 'createdBy.nom': { $regex: terme, $options: 'i' } },
+            { 'createdBy.prenom': { $regex: terme, $options: 'i' } }
+        ];
+
+        const jeux = await Jeu.find(query)
+            .populate({
+                path: 'createdBy',
+                select: 'nom prenom email role matricule'
+            })
+            .populate('ecole', 'libelle ville')
+            .populate('questions')
+            .populate('planification')
+            .sort({ date: -1 })
+            .limit(20); // Limiter les résultats
+
+        logger.info(`Recherche de jeux par ${currentUser.email}: "${terme}" - ${jeux.length} résultats`);
+
+        res.status(200).json({
+            success: true,
+            message: `${jeux.length} jeu(x) trouvé(s) pour "${terme}"`,
+            data: jeux,
+            total: jeux.length,
+            terme_recherche: terme,
+            scope: currentUser.role === 'enseignant' ? 'Mes jeux' : 
+                   currentUser.role === 'admin' ? 'Jeux de mon école' : 'Tous les jeux'
+        });
+    } catch (err) {
+        logger.error('Erreur lors de la recherche de jeux:', err);
+        res.status(500).json({
+            success: false,
+            message: 'Erreur lors de la recherche',
+            error: err.message
+        });
+    }
+}
+
+/**
+ * Archiver un jeu (le marquer comme inactif sans le supprimer)
+ */
+exports.archiverJeu =  async (req, res) =>{
+    try {
+        const jeuId = req.params.id;
+        const currentUser = req.user;
+
+        if (!jeuId) {
+            return res.status(400).json({
+                success: false,
+                message: 'ID du jeu requis'
+            });
+        }
+
+        // Vérifier les permissions
+        const jeuExistant = await jeuService.getJeuById(jeuId);
+        
+        if (currentUser.role !== 'super_admin') {
+            // Vérifier que le jeu appartient à l'école de l'utilisateur
+            let jeuEcoleId;
+            if (typeof jeuExistant.ecole === 'object' && jeuExistant.ecole._id) {
+                jeuEcoleId = jeuExistant.ecole._id.toString();
+            } else {
+                jeuEcoleId = jeuExistant.ecole.toString();
+            }
+            
+            if (!currentUser.ecole || currentUser.ecole.toString() !== jeuEcoleId) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Accès refusé. Ce jeu n\'appartient pas à votre école.'
+                });
+            }
+            
+            // Enseignant ne peut archiver que ses propres jeux
+            if (currentUser.role === 'enseignant') {
+                let jeuCreateurId;
+                if (typeof jeuExistant.createdBy === 'object' && jeuExistant.createdBy._id) {
+                    jeuCreateurId = jeuExistant.createdBy._id.toString();
+                } else {
+                    jeuCreateurId = jeuExistant.createdBy.toString();
+                }
+                
+                if (currentUser.id.toString() !== jeuCreateurId) {
+                    return res.status(403).json({
+                        success: false,
+                        message: 'Accès refusé. Vous ne pouvez archiver que vos propres jeux.'
+                    });
+                }
+            }
+        }
+
+        // Vérifier qu'il n'y a pas de planifications en cours
+        const Planification = require('../models/Planification');
+        const planificationsEnCours = await Planification.find({
+            jeu: jeuId,
+            statut: { $in: ['en attente', 'en cours'] }
+        });
+
+        if (planificationsEnCours.length > 0) {
+            return res.status(400).json({
+                success: false,
+                message: `Impossible d'archiver ce jeu. Il y a ${planificationsEnCours.length} planification(s) en cours ou en attente.`
+            });
+        }
+
+        // Archiver le jeu en ajoutant un champ "archive"
+        const updatedJeu = await jeuService.updateJeu(jeuId, {
+            archive: true,
+            dateArchive: new Date(),
+            archivePar: currentUser.id
+        });
+
+        logger.info(`Jeu archivé par ${currentUser.email}: ${jeuExistant.titre}`);
+
+        res.status(200).json({
+            success: true,
+            message: 'Jeu archivé avec succès',
+            data: {
+                id: updatedJeu._id,
+                titre: updatedJeu.titre,
+                archive: true,
+                dateArchive: updatedJeu.dateArchive
+            }
+        });
+    } catch (err) {
+        logger.error(`Erreur lors de l'archivage du jeu ${req.params.id}:`, err);
+        res.status(500).json({
+            success: false,
+            message: 'Erreur lors de l\'archivage du jeu',
+            error: err.message
+        });
+    }
+}
+
+/**
+ * Désarchiver un jeu (le rendre à nouveau actif)
+ */
+exports.desarchiverJeu =  async (req, res) => {
+    try {
+        const jeuId = req.params.id;
+        const currentUser = req.user;
+
+        if (!jeuId) {
+            return res.status(400).json({
+                success: false,
+                message: 'ID du jeu requis'
+            });
+        }
+
+        // Vérifier les permissions (même logique que archiverJeu)
+        const jeuExistant = await jeuService.getJeuById(jeuId);
+        
+        if (currentUser.role !== 'super_admin') {
+            let jeuEcoleId;
+            if (typeof jeuExistant.ecole === 'object' && jeuExistant.ecole._id) {
+                jeuEcoleId = jeuExistant.ecole._id.toString();
+            } else {
+                jeuEcoleId = jeuExistant.ecole.toString();
+            }
+            
+            if (!currentUser.ecole || currentUser.ecole.toString() !== jeuEcoleId) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Accès refusé. Ce jeu n\'appartient pas à votre école.'
+                });
+            }
+            
+            if (currentUser.role === 'enseignant') {
+                let jeuCreateurId;
+                if (typeof jeuExistant.createdBy === 'object' && jeuExistant.createdBy._id) {
+                    jeuCreateurId = jeuExistant.createdBy._id.toString();
+                } else {
+                    jeuCreateurId = jeuExistant.createdBy.toString();
+                }
+                
+                if (currentUser.id.toString() !== jeuCreateurId) {
+                    return res.status(403).json({
+                        success: false,
+                        message: 'Accès refusé. Vous ne pouvez désarchiver que vos propres jeux.'
+                    });
+                }
+            }
+        }
+
+        // Vérifier que le jeu est bien archivé
+        if (!jeuExistant.archive) {
+            return res.status(400).json({
+                success: false,
+                message: 'Ce jeu n\'est pas archivé'
+            });
+        }
+
+        // Désarchiver le jeu
+        const updatedJeu = await jeuService.updateJeu(jeuId, {
+            archive: false,
+            dateDesarchive: new Date(),
+            desarchivePar: currentUser.id,
+            $unset: { dateArchive: 1, archivePar: 1 }
+        });
+
+        logger.info(`Jeu désarchivé par ${currentUser.email}: ${jeuExistant.titre}`);
+
+        res.status(200).json({
+            success: true,
+            message: 'Jeu désarchivé avec succès',
+            data: {
+                id: updatedJeu._id,
+                titre: updatedJeu.titre,
+                archive: false,
+                dateDesarchive: updatedJeu.dateDesarchive
+            }
+        });
+    } catch (err) {
+        logger.error(`Erreur lors du désarchivage du jeu ${req.params.id}:`, err);
+        res.status(500).json({
+            success: false,
+            message: 'Erreur lors du désarchivage du jeu',
+            error: err.message
+        });
+    }
+}
+
+/**
+ * Dupliquer un jeu existant
+ */
+exports.dupliquerJeu =  async (req, res) => {
+    try {
+        const jeuId = req.params.id;
+        const currentUser = req.user;
+
+        if (!jeuId) {
+            return res.status(400).json({
+                success: false,
+                message: 'ID du jeu requis'
+            });
+        }
+
+        // Récupérer le jeu à dupliquer avec toutes ses relations
+        const Jeu = require('../models/Jeu');
+        const jeuOriginal = await Jeu.findById(jeuId)
+            .populate('questions')
+            .populate('createdBy')
+            .populate('ecole');
+
+        if (!jeuOriginal) {
+            return res.status(404).json({
+                success: false,
+                message: 'Jeu non trouvé'
+            });
+        }
+
+        // Vérifier les permissions
+        if (currentUser.role !== 'super_admin') {
+            let jeuEcoleId;
+            if (typeof jeuOriginal.ecole === 'object' && jeuOriginal.ecole._id) {
+                jeuEcoleId = jeuOriginal.ecole._id.toString();
+            } else {
+                jeuEcoleId = jeuOriginal.ecole.toString();
+            }
+            
+            if (!currentUser.ecole || currentUser.ecole.toString() !== jeuEcoleId) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Accès refusé. Ce jeu n\'appartient pas à votre école.'
+                });
+            }
+            
+            if (currentUser.role === 'enseignant') {
+                let jeuCreateurId;
+                if (typeof jeuOriginal.createdBy === 'object' && jeuOriginal.createdBy._id) {
+                    jeuCreateurId = jeuOriginal.createdBy._id.toString();
+                } else {
+                    jeuCreateurId = jeuOriginal.createdBy.toString();
+                }
+                
+                if (currentUser.id.toString() !== jeuCreateurId) {
+                    return res.status(403).json({
+                        success: false,
+                        message: 'Accès refusé. Vous ne pouvez dupliquer que vos propres jeux.'
+                    });
+                }
+            }
+        }
+
+        // Créer le nouveau jeu (copie)
+        const nouveauJeuData = {
+            titre: `${jeuOriginal.titre} (Copie)`,
+            image: jeuOriginal.image,
+            createdBy: currentUser.id,
+            ecole: currentUser.ecole || jeuOriginal.ecole,
+            date: new Date(),
+            jeuOriginal: jeuOriginal._id // Référence au jeu original
+        };
+
+        const nouveauJeu = await Jeu.create(nouveauJeuData);
+
+        // Dupliquer les questions si elles existent
+        const Question = require('../models/Question');
+        const questionsOriginales = jeuOriginal.questions || [];
+        const nouvellesQuestions = [];
+
+        for (const questionOriginale of questionsOriginales) {
+            // Récupérer la question complète avec ses réponses
+            const questionComplete = await Question.findById(questionOriginale._id)
+                .populate('reponses')
+                .populate('typeQuestion')
+                .populate('point');
+
+            if (questionComplete) {
+                // Créer la nouvelle question
+                const nouvelleQuestionData = {
+                    libelle: questionComplete.libelle,
+                    fichier: questionComplete.fichier,
+                    type_fichier: questionComplete.type_fichier,
+                    temps: questionComplete.temps,
+                    limite_response: questionComplete.limite_response,
+                    typeQuestion: questionComplete.typeQuestion?._id,
+                    point: questionComplete.point?._id,
+                    jeu: nouveauJeu._id,
+                    date: new Date()
+                };
+
+                const nouvelleQuestion = await Question.create(nouvelleQuestionData);
+
+                // Dupliquer les réponses
+                const Reponse = require('../models/Reponse');
+                const reponsesOriginales = questionComplete.reponses || [];
+
+                for (const reponseOriginale of reponsesOriginales) {
+                    const nouvelleReponseData = {
+                        libelle: reponseOriginale.libelle,
+                        etat: reponseOriginale.etat,
+                        question: nouvelleQuestion._id,
+                        date: new Date()
+                    };
+
+                    await Reponse.create(nouvelleReponseData);
+                }
+
+                nouvellesQuestions.push(nouvelleQuestion._id);
+            }
+        }
+
+        // Mettre à jour le jeu avec les nouvelles questions
+        await Jeu.findByIdAndUpdate(nouveauJeu._id, {
+            questions: nouvellesQuestions
+        });
+
+        // Récupérer le jeu complet pour la réponse
+        const jeuComplet = await Jeu.findById(nouveauJeu._id)
+            .populate('questions')
+            .populate('createdBy')
+            .populate('ecole');
+
+        logger.info(`Jeu dupliqué par ${currentUser.email}: ${jeuOriginal.titre} -> ${nouveauJeu.titre}`);
+
+        res.status(201).json({
+            success: true,
+            message: 'Jeu dupliqué avec succès',
+            data: {
+                jeuOriginal: {
+                    id: jeuOriginal._id,
+                    titre: jeuOriginal.titre
+                },
+                nouveauJeu: jeuComplet,
+                questionsCopiees: nouvellesQuestions.length,
+                resume: `${nouvellesQuestions.length} question(s) copiée(s)`
+            }
+        });
+    } catch (err) {
+        logger.error(`Erreur lors de la duplication du jeu ${req.params.id}:`, err);
+        res.status(500).json({
+            success: false,
+            message: 'Erreur lors de la duplication du jeu',
+            error: err.message
+        });
+    }
+}

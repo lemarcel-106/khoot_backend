@@ -8064,3 +8064,11 @@
 {"level":"error","message":"HTTP Error: 2025-07-06T15:40:42.671Z [ERROR] POST /api/admin 403 - 125 bytes - IP: ::1 - User-Agent: PostmanRuntime/7.44.0","timestamp":"2025-07-06T15:40:42.671Z"}
 {"level":"error","message":"HTTP Error: 2025-07-06T15:40:49.608Z [ERROR] POST /api/admin 403 - 125 bytes - IP: ::1 - User-Agent: PostmanRuntime/7.44.0","timestamp":"2025-07-06T15:40:49.608Z"}
 {"level":"error","message":"HTTP Error: 2025-07-06T16:00:44.632Z [ERROR] POST /api/auth/login 404 - 64 bytes - IP: ::ffff:127.0.0.1 - User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0","timestamp":"2025-07-06T16:00:44.632Z"}
+{"level":"error","message":"HTTP Error: 2025-07-06T17:58:00.518Z [ERROR] GET /api/enseignant/dashboard 404 - 52 bytes - IP: ::1 - User-Agent: PostmanRuntime/7.44.0","timestamp":"2025-07-06T17:58:00.518Z"}
+{"level":"error","message":"HTTP Error: 2025-07-06T17:58:35.999Z [ERROR] GET /api/enseignant/dashboard 403 - 95 bytes - IP: ::1 - User-Agent: PostmanRuntime/7.44.0","timestamp":"2025-07-06T17:58:35.999Z"}
+{"level":"error","message":"HTTP Error: 2025-07-06T17:58:41.638Z [ERROR] GET /api/enseignant/dashboard 403 - 95 bytes - IP: ::1 - User-Agent: PostmanRuntime/7.44.0","timestamp":"2025-07-06T17:58:41.638Z"}
+{"level":"error","message":"HTTP Error: 2025-07-06T17:59:02.383Z [ERROR] GET /api/stats/global 403 - 86 bytes - IP: ::1 - User-Agent: PostmanRuntime/7.44.0","timestamp":"2025-07-06T17:59:02.383Z"}
+{"level":"error","message":"HTTP Error: 2025-07-06T17:59:13.163Z [ERROR] GET /api/enseignant/dashboard 403 - 95 bytes - IP: ::1 - User-Agent: PostmanRuntime/7.44.0","timestamp":"2025-07-06T17:59:13.163Z"}
+{"level":"error","message":"HTTP Error: 2025-07-06T18:07:49.981Z [ERROR] GET /api/enseignant/dashboard 404 - 74 bytes - IP: ::1 - User-Agent: PostmanRuntime/7.44.0","timestamp":"2025-07-06T18:07:49.981Z"}
+{"level":"error","message":"HTTP Error: 2025-07-06T18:07:57.088Z [ERROR] GET /api/dashboard 403 - 95 bytes - IP: ::1 - User-Agent: PostmanRuntime/7.44.0","timestamp":"2025-07-06T18:07:57.088Z"}
+{"level":"error","message":"HTTP Error: 2025-07-06T18:08:01.866Z [ERROR] GET /api/dashboard 403 - 95 bytes - IP: ::1 - User-Agent: PostmanRuntime/7.44.0","timestamp":"2025-07-06T18:08:01.866Z"}

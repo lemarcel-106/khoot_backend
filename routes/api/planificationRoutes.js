@@ -39,14 +39,17 @@ router.post('/planification/add-participant',
     PlanificationController.addExistingParticipantToPlan
 );
 
-
-// Route à ajouter dans routes/api/planificationRoutes.js
+/**
+ * Statistiques détaillées d'une planification
+ */
 router.get('/planification/:id/statistiques', 
     authenticateToken,
     PlanificationController.getStatistiquesDetaillees
 );
 
-// Route à ajouter dans routes/api/planificationRoutes.js
+/**
+ * Export CSV des résultats d'une planification
+ */
 router.get('/planification/:id/export-csv', 
     authenticateToken,
     PlanificationController.exportResultatsCSV

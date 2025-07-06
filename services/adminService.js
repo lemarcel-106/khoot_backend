@@ -13,6 +13,238 @@ const tokenUtils = require('../utils/token');
 const adminService = {
 
 
+
+// NOUVELLES FONCTIONS À AJOUTER
+// ===============================================
+
+/**
+ * Récupérer tous les jeux créés par un enseignant
+ */
+async getJeuxParEnseignant(enseignantId) {
+    try {
+        const jeux = await Jeu.find({ createdBy: enseignantId })
+            .populate({
+                path: 'createdBy',
+                select: 'nom prenom email role matricule'
+            })
+            .populate('ecole', 'libelle ville')
+            .populate('questions')
+            .populate('planification')
+            .sort({ date: -1 })
+            .exec();
+
+        return jeux;
+    } catch (error) {
+        throw new Error(`Erreur lors de la récupération des jeux de l'enseignant: ${error.message}`);
+    }
+},
+
+/**
+ * Récupérer toutes les planifications des jeux d'un enseignant
+ */
+async getPlanificationsParEnseignant(enseignantId) {
+    try {
+        // Récupérer d'abord tous les jeux de l'enseignant
+        const jeux = await Jeu.find({ createdBy: enseignantId }).select('_id');
+        const jeuxIds = jeux.map(jeu => jeu._id);
+
+        // Récupérer toutes les planifications de ces jeux
+        const planifications = await Planification.find({ jeu: { $in: jeuxIds } })
+            .populate({
+                path: 'jeu',
+                select: 'titre createdBy',
+                populate: {
+                    path: 'createdBy',
+                    select: 'nom prenom email'
+                }
+            })
+            .populate({
+                path: 'participants',
+                populate: {
+                    path: 'apprenant',
+                    select: 'nom prenom pseudonyme matricule'
+                }
+            })
+            .sort({ date: -1 })
+            .exec();
+
+        return planifications;
+    } catch (error) {
+        throw new Error(`Erreur lors de la récupération des planifications de l'enseignant: ${error.message}`);
+    }
+},
+
+/**
+ * Récupérer les statistiques du dashboard d'un enseignant
+ */
+async getDashboardStats(enseignantId) {
+    try {
+        // Récupérer l'enseignant
+        const enseignant = await Admin.findById(enseignantId).populate('ecole');
+        if (!enseignant) {
+            throw new Error('Enseignant non trouvé');
+        }
+
+        // Récupérer les jeux
+        const jeux = await this.getJeuxParEnseignant(enseignantId);
+        
+        // Récupérer les planifications
+        const planifications = await this.getPlanificationsParEnseignant(enseignantId);
+
+        // Compter les apprenants de l'école
+        const Apprenant = require('../models/Apprenant');
+        const apprenantsEcole = await Apprenant.countDocuments({ 
+            ecole: enseignant.ecole,
+            type: 'ecole' 
+        });
+        
+        // Compter les apprenants invités de l'école
+        const apprenantsInvites = await Apprenant.countDocuments({ 
+            ecole: enseignant.ecole,
+            type: 'invite'
+        });
+
+        // Calculer les statistiques détaillées
+        const jeuxActifs = jeux.filter(jeu => {
+            return jeu.planification && jeu.planification.some(p => p.statut === 'en cours');
+        }).length;
+
+        const planificationsEnCours = planifications.filter(p => p.statut === 'en cours').length;
+        const planificationsTerminees = planifications.filter(p => p.statut === 'terminé').length;
+
+        // Calculer le total des participations
+        const participationsTotales = planifications.reduce((total, p) => {
+            return total + (p.participants ? p.participants.length : 0);
+        }, 0);
+
+        // Trouver la dernière activité
+        const derniereActivite = jeux.length > 0 
+            ? jeux.sort((a, b) => new Date(b.date) - new Date(a.date))[0].date
+            : null;
+
+        return {
+            totalJeux: jeux.length,
+            totalPlanifications: planifications.length,
+            apprenantsEcole: apprenantsEcole,
+            apprenantsInvites: apprenantsInvites,
+            jeuxActifs: jeuxActifs,
+            planificationsEnCours: planificationsEnCours,
+            planificationsTerminees: planificationsTerminees,
+            participationsTotales: participationsTotales,
+            derniereActivite: derniereActivite,
+            enseignant: enseignant
+        };
+    } catch (error) {
+        throw new Error(`Erreur lors du calcul des statistiques: ${error.message}`);
+    }
+},
+
+/**
+ * Récupérer les admins par école
+ */
+async getAdminsByEcole(ecoleId) {
+    try {
+        const admins = await Admin.find({ ecole: ecoleId })
+            .populate('ecole', 'libelle ville')
+            .populate('pays', 'libelle')
+            .sort({ nom: 1, prenom: 1 })
+            .exec();
+
+        return admins;
+    } catch (error) {
+        throw new Error(`Erreur lors de la récupération des admins par école: ${error.message}`);
+    }
+},
+
+/**
+ * Rechercher un admin par matricule
+ */
+async getAdminByMatricule(matricule, currentUser = null) {
+    try {
+        let query = { matricule: matricule };
+
+        // Filtrer selon les permissions
+        if (currentUser && currentUser.role === 'admin') {
+            query.ecole = currentUser.ecole;
+        }
+
+        const admin = await Admin.findOne(query)
+            .populate('ecole', 'libelle ville')
+            .populate('pays', 'libelle')
+            .exec();
+
+        return admin;
+    } catch (error) {
+        throw new Error(`Erreur lors de la recherche par matricule: ${error.message}`);
+    }
+},
+
+/**
+ * Obtenir les statistiques des enseignants d'une école
+ */
+async getStatsEnseignantsByEcole(ecoleId) {
+    try {
+        // Récupérer tous les enseignants de l'école
+        const enseignants = await Admin.find({ 
+            ecole: ecoleId, 
+            role: 'enseignant' 
+        }).select('_id nom prenom email statut date');
+
+        const stats = {
+            totalEnseignants: enseignants.length,
+            enseignantsActifs: enseignants.filter(e => e.statut === 'actif').length,
+            enseignantsInactifs: enseignants.filter(e => e.statut === 'inactif').length,
+            detailsEnseignants: []
+        };
+
+        // Pour chaque enseignant, calculer ses statistiques
+        for (const enseignant of enseignants) {
+            const jeux = await this.getJeuxParEnseignant(enseignant._id);
+            const planifications = await this.getPlanificationsParEnseignant(enseignant._id);
+            
+            const participationsTotales = planifications.reduce((total, p) => {
+                return total + (p.participants ? p.participants.length : 0);
+            }, 0);
+
+            stats.detailsEnseignants.push({
+                enseignant: {
+                    id: enseignant._id,
+                    nom: enseignant.nom,
+                    prenom: enseignant.prenom,
+                    email: enseignant.email,
+                    statut: enseignant.statut
+                },
+                statistiques: {
+                    jeuxCrees: jeux.length,
+                    planificationsTotal: planifications.length,
+                    participationsTotales: participationsTotales,
+                    planificationsEnCours: planifications.filter(p => p.statut === 'en cours').length,
+                    planificationsTerminees: planifications.filter(p => p.statut === 'terminé').length
+                }
+            });
+        }
+
+        // Calculer les moyennes
+        if (stats.totalEnseignants > 0) {
+            const totalJeux = stats.detailsEnseignants.reduce((sum, e) => sum + e.statistiques.jeuxCrees, 0);
+            const totalPlanifications = stats.detailsEnseignants.reduce((sum, e) => sum + e.statistiques.planificationsTotal, 0);
+            const totalParticipations = stats.detailsEnseignants.reduce((sum, e) => sum + e.statistiques.participationsTotales, 0);
+
+            stats.moyennes = {
+                jeuxParEnseignant: Math.round(totalJeux / stats.totalEnseignants),
+                planificationsParEnseignant: Math.round(totalPlanifications / stats.totalEnseignants),
+                participationsParEnseignant: Math.round(totalParticipations / stats.totalEnseignants)
+            };
+        }
+
+        return stats;
+    } catch (error) {
+        throw new Error(`Erreur lors du calcul des statistiques par école: ${error.message}`);
+    }
+},
+
+
+
         /**
      * Récupère tous les enseignants d'une école spécifique
      * @param {string} ecoleId - ID de l'école
@@ -149,125 +381,8 @@ const adminService = {
             }
         },
     
-        /**
-         * Récupère tous les jeux créés par un enseignant
-         * @param {string} enseignantId - ID de l'enseignant
-         * @param {Object} adminData - Données de l'admin connecté pour vérifier les permissions
-         * @returns {Array} Liste des jeux créés par l'enseignant
-         */
-        getJeuxParEnseignant: async (enseignantId, adminData = null) => {
-            try {
-                // Vérifier que l'enseignant existe et appartient à l'école de l'admin (si pas super_admin)
-                const enseignant = await Admin.findById(enseignantId);
-                if (!enseignant) {
-                    throw new Error('Enseignant non trouvé');
-                }
     
-                // Vérification des permissions
-                if (adminData && adminData.role !== 'super_admin') {
-                    if (!adminData.ecole || adminData.ecole.toString() !== enseignant.ecole?.toString()) {
-                        throw new Error('Accès non autorisé à cet enseignant');
-                    }
-                }
-    
-                const jeux = await Jeu.find({
-                    createdBy: enseignantId,
-                    ...(adminData && adminData.role !== 'super_admin' ? { ecole: adminData.ecole } : {})
-                })
-                .populate('createdBy', 'nom prenom email')
-                .populate('ecole', 'libelle ville')
-                .populate('questions')
-                .sort({ date: -1 }) // Tri par date décroissante
-                .exec();
-    
-                return jeux;
-            } catch (error) {
-                throw new Error('Erreur lors de la récupération des jeux de l\'enseignant : ' + error.message);
-            }
-        },
-    
-        /**
-         * Récupère toutes les planifications associées aux jeux d'un enseignant
-         * @param {string} enseignantId - ID de l'enseignant
-         * @param {Object} adminData - Données de l'admin connecté pour vérifier les permissions
-         * @returns {Array} Liste des planifications des jeux de l'enseignant
-         */
-        getPlanificationsParEnseignant: async (enseignantId, adminData = null) => {
-            try {
-                // Vérifier que l'enseignant existe et appartient à l'école de l'admin (si pas super_admin)
-                const enseignant = await Admin.findById(enseignantId);
-                if (!enseignant) {
-                    throw new Error('Enseignant non trouvé');
-                }
-    
-                // Vérification des permissions
-                if (adminData && adminData.role !== 'super_admin') {
-                    if (!adminData.ecole || adminData.ecole.toString() !== enseignant.ecole?.toString()) {
-                        throw new Error('Accès non autorisé à cet enseignant');
-                    }
-                }
-    
-                const planifications = await Planification.aggregate([
-                    {
-                        $lookup: {
-                            from: 'jeus', // Collection des jeux (au pluriel en MongoDB)
-                            localField: 'jeu',
-                            foreignField: '_id',
-                            as: 'jeuInfo'
-                        }
-                    },
-                    {
-                        $match: {
-                            'jeuInfo.createdBy': new mongoose.Types.ObjectId(enseignantId),
-                            ...(adminData && adminData.role !== 'super_admin' ? {
-                                'jeuInfo.ecole': new mongoose.Types.ObjectId(adminData.ecole)
-                            } : {})
-                        }
-                    },
-                    {
-                        $lookup: {
-                            from: 'participants', // Collection des participants
-                            localField: 'participants',
-                            foreignField: '_id',
-                            as: 'participantsInfo'
-                        }
-                    },
-                    {
-                        $lookup: {
-                            from: 'apprenants', // Collection des apprenants
-                            localField: 'participantsInfo.apprenant',
-                            foreignField: '_id',
-                            as: 'apprenantsInfo'
-                        }
-                    },
-                    {
-                        $project: {
-                            pin: 1,
-                            statut: 1,
-                            date_debut: 1,
-                            date_fin: 1,
-                            heure_debut: 1,
-                            heure_fin: 1,
-                            type: 1,
-                            limite_participant: 1,
-                            date: 1,
-                            jeu: {
-                                $arrayElemAt: ['$jeuInfo', 0]
-                            },
-                            nombreParticipants: { $size: '$participantsInfo' },
-                            participants: '$apprenantsInfo'
-                        }
-                    },
-                    {
-                        $sort: { date: -1 } // Tri par date décroissante
-                    }
-                ]);
-    
-                return planifications;
-            } catch (error) {
-                throw new Error('Erreur lors de la récupération des planifications de l\'enseignant : ' + error.message);
-            }
-        },
+     
     
         /**
          * Récupère les statistiques des enseignants d'une école
