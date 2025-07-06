@@ -191,6 +191,17 @@ router.post('/profile/update',
     AdminController.updateMyProfile
 );
 
+
+router.get('/enseignants/:id/dashboard', 
+    authenticateToken,
+    AdminController.getDashboardEnseignant
+);
+
+router.post('/admin/profile/change-password', 
+    authenticateToken,
+    checkRequiredFields(['currentPassword', 'newPassword', 'confirmPassword']),
+    AdminController.changePassword
+);
 // ===============================================
 // ROUTES DE GESTION AVANCÉE (SUPER_ADMIN SEULEMENT)
 // ===============================================

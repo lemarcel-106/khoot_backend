@@ -15,6 +15,46 @@ const PlanificationController = {
         }
     },
 
+
+    // Méthode à ajouter dans controllers/planificationController.js
+    async getStatistiquesDetaillees(req, res) {
+        try {
+            const { id } = req.params;
+            const currentUser = req.user;
+
+            const stats = await PlanificationService.getStatistiquesCompletes(id, currentUser);
+            
+            res.status(200).json({
+                success: true,
+                data: {
+                    planification: {
+                        id: stats.planification.id,
+                        pin: stats.planification.pin,
+                        statut: stats.planification.statut,
+                        jeu: stats.planification.jeu
+                    },
+                    participants: {
+                        total: stats.participants.total,
+                        taux_participation: stats.participants.tauxParticipation,
+                        score_moyen: stats.participants.scoreMoyen,
+                        temps_moyen: stats.participants.tempsMoyen
+                    },
+                    questions: stats.questions.map(q => ({
+                        libelle: q.libelle,
+                        bonnes_reponses: q.bonnesReponses,
+                        taux_reussite: q.tauxReussite,
+                        temps_moyen_reponse: q.tempsMoyenReponse
+                    })),
+                    classement: stats.classement
+                }
+            });
+        } catch (error) {
+            res.status(500).json({
+                success: false,
+                message: error.message
+            });
+        }
+    },
  // Dans controllers/planificationController.js
 // Remplacer la méthode getPlanificationsByJeu existante
 

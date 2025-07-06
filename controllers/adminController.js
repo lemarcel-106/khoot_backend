@@ -467,6 +467,44 @@ const AdminController = {
         }
     },
 
+    async getDashboardEnseignant(req, res) {
+        try {
+            const { id } = req.params;
+            const currentUser = req.user;
+
+            // Vérifications de permissions (enseignant ne peut voir que ses stats)
+            if (currentUser.role === 'enseignant' && currentUser.id !== id) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Accès refusé'
+                });
+            }
+
+            const dashboard = await AdminService.getDashboardStats(id);
+            
+            res.status(200).json({
+                success: true,
+                data: {
+                    jeuxCrees: dashboard.totalJeux,
+                    planificationsTotal: dashboard.totalPlanifications,
+                    apprenantsEcole: dashboard.apprenantsEcole,
+                    apprenantsInvites: dashboard.apprenantsInvites,
+                    derniereActivite: dashboard.derniereActivite,
+                    statistiquesDetaillees: {
+                        jeuxActifs: dashboard.jeuxActifs,
+                        planificationsEnCours: dashboard.planificationsEnCours,
+                        participationsTotales: dashboard.participationsTotales
+                    }
+                }
+            });
+        } catch (error) {
+            res.status(500).json({
+                success: false,
+                message: error.message
+            });
+        }
+    },
+
     // Nouvelle méthode pour récupérer le profil de l'admin connecté
     async getMyProfile(req, res) {
         try {
@@ -525,6 +563,36 @@ const AdminController = {
         }
     },
 
+
+
+    // Méthode à ajouter dans controllers/adminController.js
+async changePassword(req, res) {
+    try {
+        const { currentPassword, newPassword, confirmPassword } = req.body;
+        const userId = req.user.id;
+
+        // Validation
+        if (newPassword !== confirmPassword) {
+            return res.status(400).json({
+                success: false,
+                message: 'Les mots de passe ne correspondent pas'
+            });
+        }
+
+        // Logique de changement de mot de passe
+        const result = await AdminService.changePassword(userId, currentPassword, newPassword);
+        
+        res.status(200).json({
+            success: true,
+            message: 'Mot de passe modifié avec succès'
+        });
+    } catch (error) {
+        res.status(400).json({
+            success: false,
+            message: error.message
+        });
+    }
+},
     /**
      * ✅ CORRIGÉ : Récupération des enseignants avec vérification d'auth
      */

@@ -4,7 +4,12 @@ const pointController = require('../../controllers/pointController');
 const checkRequiredFields = require('../../middleware/checkRequiredFields');
 const authenticateToken = require('../../middleware/authenticateToken');
 
-router.get('/points', pointController.getAllPoints);
+
+router.get('/points', 
+    authenticateToken,
+    pointController.getAllPoints
+);
+
 
 router.post('/points', 
     checkRequiredFields(['nature', 'valeur', 'description']), 

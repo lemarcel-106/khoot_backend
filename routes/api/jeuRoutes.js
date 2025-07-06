@@ -371,4 +371,22 @@ router.get('/jeux/mes-stats',
     }
 );
 
+
+// Route à ajouter dans routes/api/jeuRoutes.js
+router.get('/jeux/mes-jeux/search/:terme', 
+    authenticateToken,
+    jeuController.searchMesJeux
+);
+
+// Routes à ajouter dans routes/api/jeuRoutes.js
+router.post('/jeux/:id/archiver', 
+    authenticateToken,
+    JeuController.archiverJeu
+);
+
+router.post('/jeux/:id/desarcher', 
+    authenticateToken,
+    JeuController.desarchiverJeu
+);
+
 module.exports = router;

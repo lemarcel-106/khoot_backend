@@ -410,7 +410,39 @@ const adminService = {
         } catch (error) {
             throw new Error("Erreur lors de la suppression de l'administrateur : " + error.message);
         }
+    },
+
+
+    // services/adminService.js - Méthode exemple
+async changePassword(userId, currentPassword, newPassword) {
+    try {
+        // Récupérer l'utilisateur
+        const admin = await Admin.findById(userId);
+        if (!admin) {
+            throw new Error('Utilisateur non trouvé');
+        }
+
+        // Vérifier l'ancien mot de passe
+        const isValidPassword = await bcrypt.compare(currentPassword, admin.password);
+        if (!isValidPassword) {
+            throw new Error('Mot de passe actuel incorrect');
+        }
+
+        // Hasher le nouveau mot de passe
+        const hashedPassword = await bcrypt.hash(newPassword, 12);
+
+        // Mettre à jour
+        await Admin.findByIdAndUpdate(userId, {
+            password: hashedPassword,
+            passwordChangedAt: new Date()
+        });
+
+        return { success: true };
+    } catch (error) {
+        throw error;
     }
+}
+
 };
 
 module.exports = adminService;

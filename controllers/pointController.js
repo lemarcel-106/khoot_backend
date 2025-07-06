@@ -1,5 +1,25 @@
 const pointService = require('../services/pointService');
 
+// const PointController = {
+//     async getAll(req, res) {
+//         try {
+//             const points = await PointService.getAllPoints();
+            
+//             res.status(200).json({
+//                 success: true,
+//                 data: points
+//             });
+//         } catch (error) {
+//             res.status(500).json({
+//                 success: false,
+//                 message: error.message
+//             });
+//         }
+//     }
+// };
+
+
+
 exports.getAllPoints = async (req, res) => {
     try {
         const points = await pointService.getAllPoints();
