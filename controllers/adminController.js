@@ -3,10 +3,10 @@ const generateMatricule = require('../utils/generateMatriculeAdmin');
 
 const AdminController = {
   
-     /**
-     * ✅ CRÉATION D'ADMIN AVEC GESTION DES RÔLES CORRIGÉE
+    /**
+     * ✅ CRÉATION D'ADMIN AVEC GESTION DES RÔLES CORRIGÉE - VERSION AMÉLIORÉE
      */
-     async createAdmin(req, res) {
+    async createAdmin(req, res) {
         try {
             // ✅ VÉRIFICATION : S'assurer que req.user existe
             if (!req.user) {
@@ -19,8 +19,18 @@ const AdminController = {
             const adminData = req.body;
             const currentUser = req.user;
 
-            console.log('Utilisateur connecté:', currentUser); // Debug
-            console.log('Données reçues:', adminData); // Debug
+            console.log('=== CRÉATION D\'UTILISATEUR ===');
+            console.log('Utilisateur connecté:', {
+                id: currentUser.id,
+                role: currentUser.role,
+                email: currentUser.email,
+                ecole: currentUser.ecole
+            });
+            console.log('Données reçues:', {
+                role: adminData.role,
+                email: adminData.email,
+                ecole: adminData.ecole
+            });
 
             // ✅ RÈGLE 1 : Les enseignants ne peuvent pas créer d'admin
             if (currentUser.role === 'enseignant') {
@@ -38,7 +48,9 @@ const AdminController = {
                 if (roleACreer !== 'enseignant') {
                     return res.status(403).json({
                         success: false,
-                        message: 'Accès refusé. Les admins ne peuvent créer que des enseignants.'
+                        message: 'Accès refusé. Les admins ne peuvent créer que des enseignants.',
+                        roleAutorise: 'enseignant',
+                        roleRecu: roleACreer
                     });
                 }
                 
@@ -54,11 +66,15 @@ const AdminController = {
                 console.log('École automatiquement assignée (admin):', currentUser.ecole);
                 
             } else if (currentUser.role === 'super_admin') {
-                // Les super_admins peuvent créer admin, enseignant (pas d'autres super_admin)
-                if (!['admin', 'enseignant'].includes(roleACreer)) {
+                // ✅ Les super_admins peuvent créer admin, enseignant (pas d'autres super_admin)
+                const rolesAutorises = ['admin', 'enseignant'];
+                
+                if (!rolesAutorises.includes(roleACreer)) {
                     return res.status(403).json({
                         success: false,
-                        message: 'Accès refusé. Les rôles autorisés sont : admin, enseignant.'
+                        message: 'Accès refusé. Les rôles autorisés sont : admin, enseignant.',
+                        rolesAutorises: rolesAutorises,
+                        roleRecu: roleACreer
                     });
                 }
                 
@@ -66,16 +82,56 @@ const AdminController = {
                 if (!adminData.ecole) {
                     return res.status(400).json({
                         success: false,
-                        message: 'L\'école est obligatoire pour les super administrateurs.'
+                        message: 'L\'école est obligatoire pour les super administrateurs.',
+                        details: 'Vous devez spécifier l\'ID de l\'école pour l\'utilisateur à créer.'
+                    });
+                }
+
+                // ✅ Vérifier que l'ID de l'école est valide (ObjectId)
+                const mongoose = require('mongoose');
+                if (!mongoose.Types.ObjectId.isValid(adminData.ecole)) {
+                    return res.status(400).json({
+                        success: false,
+                        message: 'L\'ID de l\'école fourni n\'est pas valide',
+                        ecoleRecu: adminData.ecole
+                    });
+                }
+
+                // ✅ Vérifier que l'école existe dans la base de données
+                const Ecole = require('../models/Ecole');
+                const ecoleExists = await Ecole.findById(adminData.ecole);
+                if (!ecoleExists) {
+                    return res.status(404).json({
+                        success: false,
+                        message: 'L\'école spécifiée n\'existe pas',
+                        ecoleId: adminData.ecole
                     });
                 }
                 
                 console.log('École spécifiée par super_admin:', adminData.ecole);
+                console.log('École trouvée:', ecoleExists.libelle);
                 
             } else {
                 return res.status(403).json({
                     success: false,
-                    message: 'Rôle non autorisé pour cette action.'
+                    message: 'Rôle non autorisé pour cette action.',
+                    roleUtilisateur: currentUser.role
+                });
+            }
+
+            // ✅ VALIDATION DES CHAMPS REQUIS
+            const requiredFields = ['nom', 'prenom', 'genre', 'statut', 'phone', 'email', 'password', 'adresse', 'role'];
+            const missingFields = requiredFields.filter(field => 
+                !adminData[field] || (typeof adminData[field] === 'string' && adminData[field].trim() === '')
+            );
+            
+            if (missingFields.length > 0) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Certains champs sont manquants ou vides',
+                    champsManquants: missingFields,
+                    roleUtilisateur: currentUser.role,
+                    roleCible: roleACreer
                 });
             }
 
@@ -84,6 +140,7 @@ const AdminController = {
                 adminData.matricule = await generateMatricule(adminData.ecole);
                 console.log('Matricule généré:', adminData.matricule);
             } catch (error) {
+                console.error('Erreur génération matricule:', error);
                 return res.status(400).json({
                     success: false,
                     message: `Erreur lors de la génération du matricule: ${error.message}`
@@ -95,28 +152,79 @@ const AdminController = {
                 console.log('Pays automatiquement récupéré depuis l\'école...');
             }
 
-            // ✅ CRÉATION DE L'ADMIN
+            console.log('Données finales pour création:', {
+                role: adminData.role,
+                email: adminData.email,
+                ecole: adminData.ecole,
+                matricule: adminData.matricule
+            });
+
+            // ✅ CRÉATION DE L'ADMIN VIA LE SERVICE
             const admin = await AdminService.createAdmin(adminData);
+            
+            console.log('Utilisateur créé avec succès:', {
+                id: admin._id,
+                email: admin.email,
+                role: admin.role,
+                ecole: admin.ecole
+            });
             
             return res.status(201).json({
                 success: true,
                 message: `${roleACreer} créé avec succès`,
                 data: {
-                    ...admin.toObject(),
+                    id: admin._id,
+                    nom: admin.nom,
+                    prenom: admin.prenom,
+                    email: admin.email,
+                    matricule: admin.matricule,
+                    role: admin.role,
+                    ecole: admin.ecole,
+                    statut: admin.statut,
+                    dateCreation: admin.date
                     // Ne pas retourner le mot de passe
-                    password: undefined
+                },
+                createdBy: {
+                    id: currentUser.id,
+                    role: currentUser.role,
+                    email: currentUser.email
                 }
             });
             
         } catch (error) {
             console.error('Erreur lors de la création de l\'admin:', error);
+            
+            // ✅ Gestion des erreurs spécifiques
+            if (error.code === 11000) {
+                // Erreur de duplication (email, phone, matricule)
+                const field = Object.keys(error.keyPattern)[0];
+                return res.status(400).json({
+                    success: false,
+                    message: `Ce ${field} est déjà utilisé`,
+                    field: field,
+                    value: error.keyValue[field]
+                });
+            }
+
+            if (error.name === 'ValidationError') {
+                // Erreur de validation Mongoose
+                const validationErrors = Object.values(error.errors).map(err => err.message);
+                return res.status(400).json({
+                    success: false,
+                    message: 'Erreur de validation',
+                    errors: validationErrors
+                });
+            }
+
+            // Erreur générique
             return res.status(500).json({
                 success: false,
-                message: error.message
+                message: 'Erreur interne du serveur lors de la création de l\'utilisateur',
+                error: process.env.NODE_ENV === 'development' ? error.message : 'Une erreur est survenue'
             });
         }
     },
-
+    
     async getAdminById(req, res) {
         try {
             const adminId = req.params.id;

@@ -1,4 +1,4 @@
-// middleware/conditionalValidation.js
+// middleware/conditionalValidation.js - VERSION CORRIGÉE
 /**
  * Middleware de validation conditionnelle pour la création d'admins
  * Valide les champs requis selon le rôle de l'utilisateur connecté
@@ -13,8 +13,15 @@ const conditionalAdminValidation = (req, res, next) => {
             });
         }
 
-        const { role: userRole } = req.user;
+        const { role: userRole, ecole: userEcole } = req.user;
         const { role: targetRole, ecole } = req.body;
+
+        console.log('Validation conditionnelle:', {
+            userRole,
+            userEcole,
+            targetRole,
+            ecoleSpecifiee: ecole
+        });
 
         // Champs de base toujours requis
         const baseRequiredFields = [
@@ -39,46 +46,88 @@ const conditionalAdminValidation = (req, res, next) => {
             }
         });
 
-        // Validation conditionnelle selon le rôle de l'utilisateur connecté
-        if (userRole === 'super_admin') {
-            // Les super_admins DOIVENT spécifier l'école
-            if (!ecole || (typeof ecole === 'string' && ecole.trim() === '')) {
-                missingFields.push('ecole');
-            }
-            
-            // Vérifier que le rôle cible est valide
-            if (!['admin', 'enseignant'].includes(targetRole)) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Le rôle doit être "admin" ou "enseignant"',
-                    rolesAutorises: ['admin', 'enseignant']
-                });
-            }
+        // ========================================
+        // VALIDATION SELON LE RÔLE DE L'UTILISATEUR CONNECTÉ
+        // ========================================
+
+        if (userRole === 'enseignant') {
+            // ❌ Les enseignants ne peuvent créer aucun utilisateur
+            return res.status(403).json({
+                success: false,
+                message: 'Les enseignants ne peuvent pas créer d\'utilisateurs'
+            });
+
         } else if (userRole === 'admin') {
-            // Les admins ne peuvent créer que des enseignants
+            // ✅ Les admins peuvent créer uniquement des enseignants
             if (targetRole !== 'enseignant') {
                 return res.status(403).json({
                     success: false,
                     message: 'Les admins ne peuvent créer que des enseignants',
-                    roleAutorise: 'enseignant'
+                    roleAutorise: 'enseignant',
+                    roleRecu: targetRole
                 });
             }
-            
-            // L'école sera automatiquement assignée, pas besoin de la spécifier
-            // Si elle est spécifiée, on la supprime pour éviter la confusion
+
+            // ✅ Vérifier que l'admin a une école assignée
+            if (!userEcole) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Erreur : L\'admin connecté n\'a pas d\'école assignée'
+                });
+            }
+
+            // ✅ L'école sera automatiquement assignée (celle de l'admin)
+            // On supprime l'école du body si elle est spécifiée pour éviter les conflits
             if (ecole) {
                 console.log('École spécifiée par admin ignorée, utilisation de l\'école de l\'admin connecté');
                 delete req.body.ecole;
             }
+
+        } else if (userRole === 'super_admin') {
+            // ✅ Les super_admins peuvent créer admin, enseignant, mais PAS d'autres super_admin
+            const rolesAutorises = ['admin', 'enseignant'];
+            
+            if (!rolesAutorises.includes(targetRole)) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Le rôle spécifié n\'est pas autorisé',
+                    rolesAutorises: rolesAutorises,
+                    roleRecu: targetRole
+                });
+            }
+
+            // ✅ Les super_admins DOIVENT spécifier l'école (obligatoire)
+            if (!ecole || (typeof ecole === 'string' && ecole.trim() === '')) {
+                missingFields.push('ecole');
+                return res.status(400).json({
+                    success: false,
+                    message: 'L\'école est obligatoire pour les super administrateurs',
+                    champManquant: 'ecole'
+                });
+            }
+
+            // ✅ Vérifier que l'ID de l'école est valide (ObjectId)
+            const mongoose = require('mongoose');
+            if (!mongoose.Types.ObjectId.isValid(ecole)) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'L\'ID de l\'école fourni n\'est pas valide',
+                    ecoleRecu: ecole
+                });
+            }
+
         } else {
-            // Les enseignants ne peuvent pas créer d'admins
+            // ❌ Rôle non reconnu
             return res.status(403).json({
                 success: false,
-                message: 'Les enseignants ne peuvent pas créer d\'administrateurs'
+                message: 'Rôle utilisateur non reconnu',
+                roleUtilisateur: userRole
             });
         }
 
-        // Si des champs sont manquants, retourner une erreur
+        // ========================================
+        // VÉRIFICATION DES CHAMPS MANQUANTS
+        // ========================================
         if (missingFields.length > 0) {
             return res.status(400).json({
                 success: false,
@@ -89,10 +138,12 @@ const conditionalAdminValidation = (req, res, next) => {
             });
         }
 
-        // Validation réussie, passer au middleware suivant
+        // ✅ Validation réussie, passer au middleware suivant
+        console.log('Validation conditionnelle réussie');
         next();
 
     } catch (error) {
+        console.error('Erreur dans conditionalAdminValidation:', error);
         return res.status(500).json({
             success: false,
             message: 'Erreur lors de la validation des données',
