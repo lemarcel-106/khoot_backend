@@ -2,7 +2,15 @@ const Apprenant = require('../models/Apprenant');
 const Ecole = require('../models/Ecole');
 const avatarService = require('./avatarService');
 const { generateUniqueMatricule } = require('../utils/generateUniqueMatricule');
-const tokenUtils = require('../utils/tokenUtils'); // Ajout si nécessaire
+
+// ✅ CORRECTION: Import conditionnel pour éviter l'erreur si le fichier n'existe pas
+let tokenUtils;
+try {
+    tokenUtils = require('../utils/token'); // ← Nom correct du fichier
+} catch (error) {
+    console.warn('⚠️ tokenUtils non trouvé, méthode loginParticipant désactivée');
+    tokenUtils = null;
+}
 
 const apprenantService = {
     // ===============================================
@@ -74,8 +82,13 @@ const apprenantService = {
             // Gérer l'avatar automatiquement pour les invités
             let avatarId = data.avatar;
             if (!avatarId && type === 'invite') {
-                const randomAvatar = await avatarService.getRandomAvatar();
-                avatarId = randomAvatar._id;
+                try {
+                    const randomAvatar = await avatarService.getRandomAvatar();
+                    avatarId = randomAvatar._id;
+                } catch (avatarError) {
+                    console.warn('⚠️ Impossible de récupérer un avatar aléatoire:', avatarError.message);
+                    // Continuer sans avatar si le service avatar n'est pas disponible
+                }
             }
 
             const apprenantData = {
@@ -88,7 +101,7 @@ const apprenantService = {
                 ecole: type === 'invite' ? (data.ecole || null) : data.ecole,
                 typeApprenant: type,
                 pseudonyme: type === 'invite' ? data.pseudonyme : undefined
-            }; // ← CORRECTION: Fermeture manquante de l'objet
+            };
 
             const newApprenant = new Apprenant(apprenantData);
             const savedApprenant = await newApprenant.save();
@@ -238,12 +251,17 @@ const apprenantService = {
      */
     async loginParticipant(matricule) {
         try {
+            if (!tokenUtils) {
+                throw new Error('Service de token non disponible');
+            }
+
             const user = await Apprenant.findOne({ matricule });
             if (!user) throw new Error('Utilisateur non trouvé');
-            const token = tokenUtils.generateToken(user._id);
+            
+            const token = tokenUtils.generateToken(user);
             return { user, token };
         } catch (error) {
-            throw new Error('Erreur lors de l\'authentification de l\'utilisateur');
+            throw new Error('Erreur lors de l\'authentification de l\'utilisateur : ' + error.message);
         }
     },
 
