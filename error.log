@@ -8056,3 +8056,11 @@
 {"level":"error","message":"HTTP Error: 2025-07-06T14:48:45.379Z [ERROR] POST /api/admin 400 - 117 bytes - IP: ::1 - User-Agent: PostmanRuntime/7.44.0","timestamp":"2025-07-06T14:48:45.379Z"}
 {"level":"error","message":"HTTP Error: 2025-07-06T15:11:00.052Z [ERROR] POST /api/admin 400 - 134 bytes - IP: ::1 - User-Agent: PostmanRuntime/7.44.0","timestamp":"2025-07-06T15:11:00.052Z"}
 {"level":"error","message":"HTTP Error: 2025-07-06T15:11:25.308Z [ERROR] POST /api/admin 400 - 134 bytes - IP: ::1 - User-Agent: PostmanRuntime/7.44.0","timestamp":"2025-07-06T15:11:25.308Z"}
+{"level":"error","message":"HTTP Error: 2025-07-06T15:13:06.725Z [ERROR] POST /api/admin 400 - 134 bytes - IP: ::1 - User-Agent: PostmanRuntime/7.44.0","timestamp":"2025-07-06T15:13:06.725Z"}
+{"level":"error","message":"HTTP Error: 2025-07-06T15:17:03.882Z [ERROR] POST /api/admin 400 - 109 bytes - IP: ::1 - User-Agent: PostmanRuntime/7.44.0","timestamp":"2025-07-06T15:17:03.882Z"}
+{"level":"error","message":"HTTP Error: 2025-07-06T15:26:46.360Z [ERROR] POST /api/admin 403 - 158 bytes - IP: ::1 - User-Agent: PostmanRuntime/7.44.0","timestamp":"2025-07-06T15:26:46.360Z"}
+{"level":"error","message":"HTTP Error: 2025-07-06T15:37:48.017Z [ERROR] POST /api/admin 403 - 131 bytes - IP: ::1 - User-Agent: PostmanRuntime/7.44.0","timestamp":"2025-07-06T15:37:48.017Z"}
+{"level":"error","message":"HTTP Error: 2025-07-06T15:39:32.665Z [ERROR] POST /api/admin 403 - 125 bytes - IP: ::1 - User-Agent: PostmanRuntime/7.44.0","timestamp":"2025-07-06T15:39:32.665Z"}
+{"level":"error","message":"HTTP Error: 2025-07-06T15:40:42.671Z [ERROR] POST /api/admin 403 - 125 bytes - IP: ::1 - User-Agent: PostmanRuntime/7.44.0","timestamp":"2025-07-06T15:40:42.671Z"}
+{"level":"error","message":"HTTP Error: 2025-07-06T15:40:49.608Z [ERROR] POST /api/admin 403 - 125 bytes - IP: ::1 - User-Agent: PostmanRuntime/7.44.0","timestamp":"2025-07-06T15:40:49.608Z"}
+{"level":"error","message":"HTTP Error: 2025-07-06T16:00:44.632Z [ERROR] POST /api/auth/login 404 - 64 bytes - IP: ::ffff:127.0.0.1 - User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0","timestamp":"2025-07-06T16:00:44.632Z"}

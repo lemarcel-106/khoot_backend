@@ -3,7 +3,7 @@
  * Middleware de validation conditionnelle pour la création d'admins
  * Valide les champs requis selon le rôle de l'utilisateur connecté
  */
-const conditionalAdminValidation = (req, res, next) => {
+const conditionalAdminValidation = async (req, res, next) => {
     try {
         // Vérifier que l'utilisateur est authentifié
         if (!req.user) {
@@ -64,7 +64,7 @@ const conditionalAdminValidation = (req, res, next) => {
                     success: false,
                     message: 'Les admins ne peuvent créer que des enseignants',
                     roleAutorise: 'enseignant',
-                    roleRecu: targetRole
+                    roleRecu: userRole
                 });
             }
 
@@ -84,8 +84,8 @@ const conditionalAdminValidation = (req, res, next) => {
             }
 
         } else if (userRole === 'super_admin') {
-            // ✅ Les super_admins peuvent créer admin, enseignant, mais PAS d'autres super_admin
-            const rolesAutorises = ['admin', 'enseignant'];
+            // ✅ Les super_admins peuvent créer admin, enseignant, ET super_admin
+            const rolesAutorises = ['admin', 'enseignant', 'super_admin'];
             
             if (!rolesAutorises.includes(targetRole)) {
                 return res.status(400).json({
@@ -96,24 +96,55 @@ const conditionalAdminValidation = (req, res, next) => {
                 });
             }
 
-            // ✅ Les super_admins DOIVENT spécifier l'école (obligatoire)
-            if (!ecole || (typeof ecole === 'string' && ecole.trim() === '')) {
-                missingFields.push('ecole');
-                return res.status(400).json({
-                    success: false,
-                    message: 'L\'école est obligatoire pour les super administrateurs',
-                    champManquant: 'ecole'
-                });
-            }
+            // ✅ LOGIQUE CORRIGÉE : École selon le rôle cible
+            if (targetRole === 'super_admin') {
+                // ✅ Les super_admin n'ont PAS d'école (utilisateurs système)
+                if (ecole) {
+                    console.log('École spécifiée pour super_admin ignorée (utilisateur système)');
+                    delete req.body.ecole; // Supprimer l'école du body
+                }
+            } else if (targetRole === 'admin' || targetRole === 'enseignant') {
+                // ✅ Les admin et enseignant DOIVENT avoir une école
+                if (!ecole || (typeof ecole === 'string' && ecole.trim() === '')) {
+                    missingFields.push('ecole');
+                    return res.status(400).json({
+                        success: false,
+                        message: 'L\'école est obligatoire pour les admins et enseignants',
+                        champManquant: 'ecole',
+                        roleCible: targetRole
+                    });
+                }
 
-            // ✅ Vérifier que l'ID de l'école est valide (ObjectId)
-            const mongoose = require('mongoose');
-            if (!mongoose.Types.ObjectId.isValid(ecole)) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'L\'ID de l\'école fourni n\'est pas valide',
-                    ecoleRecu: ecole
-                });
+                // ✅ Vérifier que l'ID de l'école est valide (ObjectId)
+                const mongoose = require('mongoose');
+                if (!mongoose.Types.ObjectId.isValid(ecole)) {
+                    return res.status(400).json({
+                        success: false,
+                        message: 'L\'ID de l\'école fourni n\'est pas valide',
+                        ecoleRecu: ecole
+                    });
+                }
+
+                // ✅ Vérifier que l'école existe dans la base de données
+                const Ecole = require('../models/Ecole');
+                try {
+                    const ecoleExists = await Ecole.findById(ecole);
+                    if (!ecoleExists) {
+                        return res.status(404).json({
+                            success: false,
+                            message: 'L\'école spécifiée n\'existe pas',
+                            ecoleId: ecole
+                        });
+                    }
+                    console.log('École spécifiée par super_admin:', ecole);
+                    console.log('École trouvée:', ecoleExists.libelle);
+                } catch (error) {
+                    return res.status(500).json({
+                        success: false,
+                        message: 'Erreur lors de la vérification de l\'école',
+                        error: error.message
+                    });
+                }
             }
 
         } else {
@@ -156,7 +187,7 @@ const conditionalAdminValidation = (req, res, next) => {
  * Middleware de validation pour la mise à jour d'admins
  * Vérifie les permissions selon le rôle
  */
-const conditionalAdminUpdateValidation = (req, res, next) => {
+const conditionalAdminUpdateValidation = async (req, res, next) => {
     try {
         const currentUser = req.user;
         const targetId = req.params.id;
@@ -212,7 +243,7 @@ const conditionalAdminUpdateValidation = (req, res, next) => {
 /**
  * Middleware de validation pour la suppression d'admins
  */
-const conditionalAdminDeleteValidation = (req, res, next) => {
+const conditionalAdminDeleteValidation = async (req, res, next) => {
     try {
         const currentUser = req.user;
         const targetId = req.params.id;

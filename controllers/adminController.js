@@ -66,50 +66,60 @@ const AdminController = {
                 console.log('École automatiquement assignée (admin):', currentUser.ecole);
                 
             } else if (currentUser.role === 'super_admin') {
-                // ✅ Les super_admins peuvent créer admin, enseignant (pas d'autres super_admin)
-                const rolesAutorises = ['admin', 'enseignant'];
+                // ✅ Les super_admins peuvent créer admin, enseignant, ET super_admin
+                const rolesAutorises = ['admin', 'enseignant', 'super_admin'];
                 
                 if (!rolesAutorises.includes(roleACreer)) {
                     return res.status(403).json({
                         success: false,
-                        message: 'Accès refusé. Les rôles autorisés sont : admin, enseignant.',
+                        message: 'Accès refusé. Les rôles autorisés sont : admin, enseignant, super_admin.',
                         rolesAutorises: rolesAutorises,
                         roleRecu: roleACreer
                     });
                 }
                 
-                // ✅ RÈGLE 4 : Les super_admins DOIVENT spécifier l'école
-                if (!adminData.ecole) {
-                    return res.status(400).json({
-                        success: false,
-                        message: 'L\'école est obligatoire pour les super administrateurs.',
-                        details: 'Vous devez spécifier l\'ID de l\'école pour l\'utilisateur à créer.'
-                    });
-                }
+                // ✅ LOGIQUE CORRIGÉE : École selon le rôle cible
+                if (roleACreer === 'super_admin') {
+                    // ✅ Les super_admin n'ont PAS d'école (utilisateurs système)
+                    if (adminData.ecole) {
+                        console.log('École spécifiée pour super_admin ignorée (utilisateur système)');
+                        delete adminData.ecole; // Supprimer l'école
+                    }
+                } else if (roleACreer === 'admin' || roleACreer === 'enseignant') {
+                    // ✅ Les admin et enseignant DOIVENT avoir une école
+                    if (!adminData.ecole) {
+                        return res.status(400).json({
+                            success: false,
+                            message: 'L\'école est obligatoire pour les admins et enseignants.',
+                            details: 'Vous devez spécifier l\'ID de l\'école pour l\'utilisateur à créer.',
+                            roleCible: roleACreer
+                        });
+                    }
 
-                // ✅ Vérifier que l'ID de l'école est valide (ObjectId)
-                const mongoose = require('mongoose');
-                if (!mongoose.Types.ObjectId.isValid(adminData.ecole)) {
-                    return res.status(400).json({
-                        success: false,
-                        message: 'L\'ID de l\'école fourni n\'est pas valide',
-                        ecoleRecu: adminData.ecole
-                    });
-                }
+                    // ✅ Vérifier que l'ID de l'école est valide (ObjectId)
+                    const mongoose = require('mongoose');
+                    if (!mongoose.Types.ObjectId.isValid(adminData.ecole)) {
+                        return res.status(400).json({
+                            success: false,
+                            message: 'L\'ID de l\'école fourni n\'est pas valide',
+                            ecoleRecu: adminData.ecole
+                        });
+                    }
 
-                // ✅ Vérifier que l'école existe dans la base de données
-                const Ecole = require('../models/Ecole');
-                const ecoleExists = await Ecole.findById(adminData.ecole);
-                if (!ecoleExists) {
-                    return res.status(404).json({
-                        success: false,
-                        message: 'L\'école spécifiée n\'existe pas',
-                        ecoleId: adminData.ecole
-                    });
+                    // ✅ Vérifier que l'école existe dans la base de données
+                    const Ecole = require('../models/Ecole');
+                    const ecoleExists = await Ecole.findById(adminData.ecole);
+                    if (!ecoleExists) {
+                        return res.status(404).json({
+                            success: false,
+                            message: 'L\'école spécifiée n\'existe pas',
+                            ecoleId: adminData.ecole
+                        });
+                    }
+                    
+                    console.log('École spécifiée par super_admin:', adminData.ecole);
+                    console.log('École trouvée:', ecoleExists.libelle);
                 }
-                
-                console.log('École spécifiée par super_admin:', adminData.ecole);
-                console.log('École trouvée:', ecoleExists.libelle);
                 
             } else {
                 return res.status(403).json({
@@ -186,58 +196,59 @@ const AdminController = {
                 },
                 createdBy: {
                     id: currentUser.id,
-                    role: currentUser.role,
-                    email: currentUser.email
+                    email: currentUser.email,
+                    role: currentUser.role
                 }
             });
-            
-        } catch (error) {
-            console.error('Erreur lors de la création de l\'admin:', error);
-            
-            // ✅ Gestion des erreurs spécifiques
-            if (error.code === 11000) {
-                // Erreur de duplication (email, phone, matricule)
-                const field = Object.keys(error.keyPattern)[0];
-                return res.status(400).json({
-                    success: false,
-                    message: `Ce ${field} est déjà utilisé`,
-                    field: field,
-                    value: error.keyValue[field]
-                });
-            }
 
-            if (error.name === 'ValidationError') {
-                // Erreur de validation Mongoose
-                const validationErrors = Object.values(error.errors).map(err => err.message);
-                return res.status(400).json({
-                    success: false,
-                    message: 'Erreur de validation',
-                    errors: validationErrors
-                });
-            }
-
-            // Erreur générique
-            return res.status(500).json({
+        } catch (err) {
+            console.error('Erreur lors de la création de l\'admin:', err);
+            res.status(500).json({
                 success: false,
-                message: 'Erreur interne du serveur lors de la création de l\'utilisateur',
-                error: process.env.NODE_ENV === 'development' ? error.message : 'Une erreur est survenue'
+                message: 'Erreur lors de la création de l\'admin',
+                error: err.message
             });
         }
     },
-    
+
+    async getAllAdmin(req, res) {
+        try {
+            const currentUser = req.user;
+            let admins;
+
+            if (currentUser.role === 'super_admin') {
+                // Les super_admins peuvent voir tous les admins
+                admins = await AdminService.getAllAdmin();
+            } else if (currentUser.role === 'admin') {
+                // Les admins ne peuvent voir que les enseignants de leur école
+                admins = await AdminService.getAdminsByEcole(currentUser.ecole);
+                admins = admins.filter(admin => admin.role === 'enseignant');
+            } else {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Accès refusé. Privilèges insuffisants.'
+                });
+            }
+
+            res.status(200).json({
+                success: true,
+                message: 'Admins récupérés avec succès',
+                data: admins
+            });
+        } catch (err) {
+            res.status(500).json({
+                success: false,
+                message: 'Erreur lors de la récupération des admins',
+                error: err.message
+            });
+        }
+    },
+
     async getAdminById(req, res) {
         try {
             const adminId = req.params.id;
             const currentUser = req.user;
-
-            // Un admin peut voir ses propres infos, un super_admin peut voir tous les admins
-            if (currentUser.role !== 'super_admin' && currentUser.id !== adminId) {
-                return res.status(403).json({
-                    success: false,
-                    message: 'Accès refusé. Vous ne pouvez consulter que vos propres informations.'
-                });
-            }
-
+            
             const admin = await AdminService.getAdminById(adminId);
             if (!admin) {
                 return res.status(404).json({
@@ -246,77 +257,53 @@ const AdminController = {
                 });
             }
 
-            return res.status(200).json({
-                success: true,
-                message: 'Admin récupéré avec succès',
-                data: admin
-            });
-        } catch (error) {
-            return res.status(500).json({
-                success: false,
-                message: error.message
-            });
-        }
-    },
-
-    async getAllAdmin(req, res) {
-        try {
-            const currentUser = req.user;
-
-            // ✅ GESTION DES RÔLES POUR LA CONSULTATION
-            let admins;
-            
-            if (currentUser.role === 'super_admin') {
-                // Les super_admins peuvent voir tous les admins
-                admins = await AdminService.getAllAdmin();
-            } else if (currentUser.role === 'admin') {
-                // Les admins peuvent voir les enseignants de leur école
-                if (!currentUser.ecole) {
-                    return res.status(400).json({
+            // Vérifications des permissions
+            if (currentUser.role === 'enseignant') {
+                // Les enseignants ne peuvent voir que leur propre profil
+                if (currentUser.id !== adminId) {
+                    return res.status(403).json({
                         success: false,
-                        message: "Aucune école associée à votre compte"
+                        message: 'Accès refusé. Vous ne pouvez consulter que votre propre profil.'
                     });
                 }
-                
-                const adminData = {
-                    id: currentUser.id,
-                    role: currentUser.role,
-                    ecole: currentUser.ecole
-                };
-                
-                admins = await AdminService.getEnseignantsByEcole(currentUser.ecole, adminData);
-            } else {
-                // Les enseignants ne peuvent pas voir la liste des admins
-                return res.status(403).json({
-                    success: false,
-                    message: 'Accès refusé. Vous ne pouvez pas consulter la liste des administrateurs.'
-                });
+            } else if (currentUser.role === 'admin') {
+                // Les admins peuvent voir leur profil + enseignants de leur école
+                if (currentUser.id !== adminId && 
+                    (admin.ecole?.toString() !== currentUser.ecole?.toString() || admin.role !== 'enseignant')) {
+                    return res.status(403).json({
+                        success: false,
+                        message: 'Accès refusé. Vous ne pouvez consulter que votre profil ou celui des enseignants de votre école.'
+                    });
+                }
             }
+            // Les super_admins peuvent voir n'importe qui
 
-            return res.status(200).json({
+            res.status(200).json({
                 success: true,
-                message: 'Liste des admins récupérée avec succès',
-                data: admins,
-                total: admins.length
+                message: 'Admin récupéré avec succès',
+                data: {
+                    ...admin.toObject(),
+                    password: undefined // Ne pas retourner le mot de passe
+                }
             });
-        } catch (error) {
-            return res.status(500).json({
+        } catch (err) {
+            res.status(500).json({
                 success: false,
-                message: error.message
+                message: 'Erreur lors de la récupération de l\'admin',
+                error: err.message
             });
         }
     },
 
     async getAdminByMatricule(req, res) {
         try {
-            const matricule = req.body.matricule;
+            const { matricule } = req.body;
             const currentUser = req.user;
-
-            // ✅ GESTION DES RÔLES POUR LA RECHERCHE PAR MATRICULE
-            if (currentUser.role === 'enseignant') {
-                return res.status(403).json({
+            
+            if (!matricule) {
+                return res.status(400).json({
                     success: false,
-                    message: 'Accès refusé. Les enseignants ne peuvent pas rechercher d\'autres admins.'
+                    message: 'Matricule requis'
                 });
             }
 
@@ -324,12 +311,13 @@ const AdminController = {
             if (!admin) {
                 return res.status(404).json({
                     success: false,
-                    message: 'Admin non trouvé'
+                    message: 'Admin non trouvé avec ce matricule'
                 });
             }
 
-            // Vérifier les permissions pour un admin normal
+            // Vérifications des permissions selon le rôle
             if (currentUser.role === 'admin') {
+                // Les admins ne peuvent rechercher que dans leur école
                 if (admin.ecole?.toString() !== currentUser.ecole?.toString()) {
                     return res.status(403).json({
                         success: false,
@@ -337,16 +325,21 @@ const AdminController = {
                     });
                 }
             }
+            // Les super_admins peuvent rechercher partout
 
-            return res.status(200).json({
+            res.status(200).json({
                 success: true,
-                message: 'Admin récupéré avec succès',
-                data: admin
+                message: 'Admin trouvé',
+                data: {
+                    ...admin.toObject(),
+                    password: undefined // Ne pas retourner le mot de passe
+                }
             });
-        } catch (error) {
-            return res.status(500).json({
+        } catch (err) {
+            res.status(500).json({
                 success: false,
-                message: error.message
+                message: 'Erreur lors de la recherche de l\'admin',
+                error: err.message
             });
         }
     },
@@ -357,7 +350,7 @@ const AdminController = {
             const adminData = req.body;
             const currentUser = req.user;
 
-            // ✅ GESTION DES RÔLES POUR LA MODIFICATION
+            // Vérifications des permissions selon le rôle
             if (currentUser.role === 'enseignant') {
                 // Les enseignants ne peuvent modifier que leur propre profil
                 if (currentUser.id !== adminId) {
@@ -366,44 +359,29 @@ const AdminController = {
                         message: 'Accès refusé. Vous ne pouvez modifier que votre propre profil.'
                     });
                 }
-                // Empêcher la modification du rôle et de l'école pour les enseignants
-                if (adminData.role) delete adminData.role;
-                if (adminData.ecole) delete adminData.ecole;
                 
-            } else if (currentUser.role === 'admin') {
-                // Les admins peuvent modifier leur profil et celui des enseignants de leur école
-                if (currentUser.id !== adminId) {
-                    // Vérifier que l'admin à modifier appartient à la même école
-                    const targetAdmin = await AdminService.getAdminById(adminId);
-                    if (!targetAdmin || targetAdmin.ecole?.toString() !== currentUser.ecole?.toString()) {
-                        return res.status(403).json({
-                            success: false,
-                            message: 'Accès refusé. Vous ne pouvez modifier que les enseignants de votre école.'
-                        });
-                    }
-                    // Un admin ne peut pas modifier le rôle d'un autre admin
-                    if (adminData.role && targetAdmin.role !== 'enseignant') {
-                        return res.status(403).json({
-                            success: false,
-                            message: 'Accès refusé. Vous ne pouvez pas modifier le rôle de cet utilisateur.'
-                        });
-                    }
-                }
-                // Empêcher la modification de l'école et du rôle vers super_admin
-                if (adminData.ecole) delete adminData.ecole;
-                if (adminData.role === 'super_admin') {
+                // Empêcher la modification du rôle et de l'école
+                if (adminData.role || adminData.ecole) {
                     return res.status(403).json({
                         success: false,
-                        message: 'Accès refusé. Vous ne pouvez pas promouvoir quelqu\'un au rang de super administrateur.'
+                        message: 'Vous ne pouvez pas modifier votre rôle ou votre école.'
+                    });
+                }
+            } else if (currentUser.role === 'admin') {
+                // Les admins peuvent modifier leur profil + enseignants de leur école
+                const targetAdmin = await AdminService.getAdminById(adminId);
+                if (!targetAdmin) {
+                    return res.status(404).json({
+                        success: false,
+                        message: 'Admin non trouvé'
                     });
                 }
                 
-            } else if (currentUser.role === 'super_admin') {
-                // Les super_admins peuvent tout modifier sauf se rétrograder eux-mêmes
-                if (currentUser.id === adminId && adminData.role && adminData.role !== 'super_admin') {
+                if (currentUser.id !== adminId && 
+                    (targetAdmin.ecole?.toString() !== currentUser.ecole?.toString() || targetAdmin.role !== 'enseignant')) {
                     return res.status(403).json({
                         success: false,
-                        message: 'Vous ne pouvez pas modifier votre propre rôle de super administrateur.'
+                        message: 'Accès refusé. Vous ne pouvez modifier que votre profil ou celui des enseignants de votre école.'
                     });
                 }
             }
@@ -556,71 +534,52 @@ const AdminController = {
             if (!req.user) {
                 return res.status(401).json({
                     success: false,
-                    message: 'Utilisateur non authentifié. Token manquant ou invalide.'
+                    message: 'Utilisateur non authentifié.'
                 });
             }
 
             const currentUser = req.user;
+            let enseignants;
 
-            // ✅ GESTION DES RÔLES POUR LA CONSULTATION DES ENSEIGNANTS
-            if (currentUser.role === 'enseignant') {
+            if (currentUser.role === 'admin') {
+                // Les admins peuvent voir uniquement les enseignants de leur école
+                enseignants = await AdminService.getAdminsByEcole(currentUser.ecole);
+                enseignants = enseignants.filter(admin => admin.role === 'enseignant');
+            } else if (currentUser.role === 'super_admin') {
+                // Les super_admins peuvent voir tous les enseignants
+                enseignants = await AdminService.getAllAdmin();
+                enseignants = enseignants.filter(admin => admin.role === 'enseignant');
+            } else {
                 return res.status(403).json({
                     success: false,
-                    message: 'Accès refusé. Les enseignants ne peuvent pas consulter la liste des autres enseignants.'
+                    message: 'Accès refusé. Seuls les admins et super_admins peuvent consulter cette liste.'
                 });
             }
-
-            // Vérifier que l'admin a une école associée
-            if (!currentUser.ecole) {
-                return res.status(400).json({
-                    success: false,
-                    message: "Aucune école associée à votre compte"
-                });
-            }
-
-            const adminData = {
-                id: currentUser.id,
-                role: currentUser.role,
-                ecole: currentUser.ecole
-            };
-
-            // Utiliser la nouvelle méthode avec statistiques
-            const enseignants = await AdminService.getEnseignantsAvecStats(currentUser.ecole, adminData);
 
             return res.status(200).json({
                 success: true,
-                message: 'Liste de vos enseignants avec statistiques récupérée avec succès',
+                message: 'Enseignants récupérés avec succès',
                 data: enseignants,
-                total: enseignants.length,
-                ecole: currentUser.ecole
+                total: enseignants.length
             });
-
         } catch (error) {
-            console.error('Erreur lors de la récupération de mes enseignants:', error);
             return res.status(500).json({
                 success: false,
-                message: error.message
+                message: 'Erreur lors de la récupération des enseignants',
+                error: error.message
             });
         }
     },
 
     /**
-     * ✅ CORRIGÉ : Jeux par enseignant avec vérification d'auth
+     * Récupérer tous les jeux créés par un enseignant donné
      */
     async getJeuxParEnseignant(req, res) {
         try {
-            // ✅ VÉRIFICATION : S'assurer que req.user existe
-            if (!req.user) {
-                return res.status(401).json({
-                    success: false,
-                    message: 'Utilisateur non authentifié. Token manquant ou invalide.'
-                });
-            }
-
             const { enseignantId } = req.params;
             const currentUser = req.user;
 
-            // ✅ GESTION DES RÔLES POUR LA CONSULTATION DES JEUX
+            // Vérifications des permissions
             if (currentUser.role === 'enseignant') {
                 // Les enseignants ne peuvent voir que leurs propres jeux
                 if (currentUser.id !== enseignantId) {
@@ -629,58 +588,44 @@ const AdminController = {
                         message: 'Accès refusé. Vous ne pouvez consulter que vos propres jeux.'
                     });
                 }
+            } else if (currentUser.role === 'admin') {
+                // Les admins peuvent voir les jeux des enseignants de leur école
+                const enseignant = await AdminService.getAdminById(enseignantId);
+                if (!enseignant || enseignant.ecole?.toString() !== currentUser.ecole?.toString()) {
+                    return res.status(403).json({
+                        success: false,
+                        message: 'Accès refusé. Cet enseignant n\'appartient pas à votre école.'
+                    });
+                }
             }
+            // Les super_admins peuvent voir tous les jeux
 
-            // Validation de l'ID de l'enseignant
-            if (!enseignantId) {
-                return res.status(400).json({
-                    success: false,
-                    message: "L'ID de l'enseignant est requis"
-                });
-            }
-
-            const adminData = {
-                id: currentUser.id,
-                role: currentUser.role,
-                ecole: currentUser.ecole
-            };
-
-            const jeux = await AdminService.getJeuxParEnseignant(enseignantId, adminData);
-
+            const jeux = await AdminService.getJeuxParEnseignant(enseignantId);
+            
             return res.status(200).json({
                 success: true,
-                message: 'Liste des jeux de l\'enseignant récupérée avec succès',
+                message: 'Jeux de l\'enseignant récupérés avec succès',
                 data: jeux,
-                total: jeux.length,
-                enseignantId: enseignantId
+                total: jeux.length
             });
-
         } catch (error) {
-            console.error('Erreur lors de la récupération des jeux de l\'enseignant:', error);
             return res.status(500).json({
                 success: false,
-                message: error.message
+                message: 'Erreur lors de la récupération des jeux de l\'enseignant',
+                error: error.message
             });
         }
     },
 
-     /**
-     * ✅ CORRIGÉ : Planifications par enseignant avec vérification d'auth
+    /**
+     * Récupérer toutes les planifications des jeux d'un enseignant donné
      */
-     async getPlanificationsParEnseignant(req, res) {
+    async getPlanificationsParEnseignant(req, res) {
         try {
-            // ✅ VÉRIFICATION : S'assurer que req.user existe
-            if (!req.user) {
-                return res.status(401).json({
-                    success: false,
-                    message: 'Utilisateur non authentifié. Token manquant ou invalide.'
-                });
-            }
-
             const { enseignantId } = req.params;
             const currentUser = req.user;
 
-            // ✅ GESTION DES RÔLES POUR LA CONSULTATION DES PLANIFICATIONS
+            // Vérifications des permissions
             if (currentUser.role === 'enseignant') {
                 // Les enseignants ne peuvent voir que leurs propres planifications
                 if (currentUser.id !== enseignantId) {
@@ -689,175 +634,153 @@ const AdminController = {
                         message: 'Accès refusé. Vous ne pouvez consulter que vos propres planifications.'
                     });
                 }
+            } else if (currentUser.role === 'admin') {
+                // Les admins peuvent voir les planifications des enseignants de leur école
+                const enseignant = await AdminService.getAdminById(enseignantId);
+                if (!enseignant || enseignant.ecole?.toString() !== currentUser.ecole?.toString()) {
+                    return res.status(403).json({
+                        success: false,
+                        message: 'Accès refusé. Cet enseignant n\'appartient pas à votre école.'
+                    });
+                }
             }
+            // Les super_admins peuvent voir toutes les planifications
 
-            // Validation de l'ID de l'enseignant
-            if (!enseignantId) {
-                return res.status(400).json({
-                    success: false,
-                    message: "L'ID de l'enseignant est requis"
-                });
-            }
-
-            const adminData = {
-                id: currentUser.id,
-                role: currentUser.role,
-                ecole: currentUser.ecole
-            };
-
-            const planifications = await AdminService.getPlanificationsParEnseignant(enseignantId, adminData);
-
+            const planifications = await AdminService.getPlanificationsParEnseignant(enseignantId);
+            
             return res.status(200).json({
                 success: true,
-                message: 'Liste des planifications de l\'enseignant récupérée avec succès',
+                message: 'Planifications de l\'enseignant récupérées avec succès',
                 data: planifications,
-                total: planifications.length,
-                enseignantId: enseignantId
+                total: planifications.length
             });
-
         } catch (error) {
-            console.error('Erreur lors de la récupération des planifications de l\'enseignant:', error);
             return res.status(500).json({
                 success: false,
-                message: error.message
+                message: 'Erreur lors de la récupération des planifications de l\'enseignant',
+                error: error.message
             });
         }
     },
 
     /**
-     * Récupère les statistiques des enseignants d'une école
-     * Route: GET /api/ecoles/:ecoleId/enseignants/stats
+     * Récupérer les statistiques des enseignants d'une école
      */
     async getStatsEnseignantsByEcole(req, res) {
         try {
             const { ecoleId } = req.params;
             const currentUser = req.user;
 
-            // ✅ GESTION DES RÔLES POUR LES STATISTIQUES
-            if (currentUser.role === 'enseignant') {
-                return res.status(403).json({
-                    success: false,
-                    message: 'Accès refusé. Les enseignants ne peuvent pas consulter les statistiques.'
-                });
-            }
-
-            // Validation de l'ID de l'école
-            if (!ecoleId) {
-                return res.status(400).json({
-                    success: false,
-                    message: "L'ID de l'école est requis"
-                });
-            }
-
-            // Vérification des permissions
-            if (currentUser.role !== 'super_admin') {
-                if (!currentUser.ecole || currentUser.ecole.toString() !== ecoleId) {
+            // Vérifications des permissions
+            if (currentUser.role === 'admin') {
+                // Les admins ne peuvent voir que les stats de leur école
+                if (currentUser.ecole?.toString() !== ecoleId) {
                     return res.status(403).json({
                         success: false,
-                        message: "Accès refusé à cette école"
+                        message: 'Accès refusé. Vous ne pouvez consulter que les statistiques de votre école.'
                     });
                 }
             }
+            // Les super_admins peuvent voir les stats de n'importe quelle école
 
             const stats = await AdminService.getStatsEnseignantsByEcole(ecoleId);
-
+            
             return res.status(200).json({
                 success: true,
                 message: 'Statistiques des enseignants récupérées avec succès',
                 data: stats
             });
-
         } catch (error) {
-            console.error('Erreur lors de la récupération des statistiques:', error);
             return res.status(500).json({
                 success: false,
-                message: error.message
+                message: 'Erreur lors de la récupération des statistiques des enseignants',
+                error: error.message
             });
         }
-    }
-,
-async updateAdminStatus(req, res) {
-    try {
-        const targetAdminId = req.params.id;
-        const { statut } = req.body;
-        const currentUser = req.user;
+    },
 
-        // Validation du statut
-        if (!statut || !['actif', 'inactif', 'suspendu'].includes(statut)) {
-            return res.status(400).json({
-                success: false,
-                message: 'Statut invalide. Valeurs autorisées : actif, inactif, suspendu'
-            });
-        }
+    /**
+     * Mettre à jour le statut d'un administrateur (actif/désactivé)
+     */
+    async updateAdminStatus(req, res) {
+        try {
+            const { targetAdminId } = req.params;
+            const { statut } = req.body;
+            const currentUser = req.user;
 
-        // Empêcher l'auto-modification de statut
-        if (currentUser.id === targetAdminId) {
-            return res.status(400).json({
-                success: false,
-                message: 'Vous ne pouvez pas modifier votre propre statut'
-            });
-        }
-
-        // Vérification des permissions selon le rôle
-        if (currentUser.role === 'enseignant') {
-            return res.status(403).json({
-                success: false,
-                message: 'Accès refusé. Les enseignants ne peuvent pas modifier le statut des administrateurs.'
-            });
-        }
-
-        // Récupérer l'admin cible pour vérification
-        const targetAdmin = await AdminService.getAdminById(targetAdminId);
-        if (!targetAdmin) {
-            return res.status(404).json({
-                success: false,
-                message: 'Admin non trouvé'
-            });
-        }
-
-        if (currentUser.role === 'admin') {
-            // Les admins ne peuvent modifier que les enseignants de leur école
-            if (targetAdmin.ecole?.toString() !== currentUser.ecole?.toString() || 
-                targetAdmin.role !== 'enseignant') {
-                return res.status(403).json({
+            // Validation du statut
+            if (!['actif', 'inactif', 'suspendu'].includes(statut)) {
+                return res.status(400).json({
                     success: false,
-                    message: 'Accès refusé. Vous ne pouvez modifier que le statut des enseignants de votre école.'
+                    message: 'Statut invalide. Valeurs acceptées: actif, inactif, suspendu'
                 });
             }
-        }
-        // Les super_admins peuvent modifier n'importe qui (déjà vérifié l'auto-modification plus haut)
 
-        // Mettre à jour le statut
-        const updatedAdmin = await AdminService.updateAdmin(targetAdminId, { statut });
-
-        return res.status(200).json({
-            success: true,
-            message: `Statut de l'administrateur mis à jour avec succès`,
-            data: {
-                id: updatedAdmin._id,
-                nom: updatedAdmin.nom,
-                prenom: updatedAdmin.prenom,
-                email: updatedAdmin.email,
-                role: updatedAdmin.role,
-                ancienStatut: targetAdmin.statut,
-                nouveauStatut: updatedAdmin.statut,
-                modifiePar: currentUser.email,
-                dateModification: new Date().toISOString()
+            // Empêcher l'auto-modification de statut
+            if (currentUser.id === targetAdminId) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Vous ne pouvez pas modifier votre propre statut'
+                });
             }
-        });
 
-    } catch (error) {
-        console.error('Erreur lors de la mise à jour du statut:', error);
-        return res.status(500).json({
-            success: false,
-            message: 'Erreur lors de la mise à jour du statut',
-            error: error.message
-        });
+            // Vérifications des permissions selon le rôle
+            if (currentUser.role === 'enseignant') {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Accès refusé. Les enseignants ne peuvent pas modifier le statut des administrateurs.'
+                });
+            }
+
+            // Récupérer l'admin cible pour vérification
+            const targetAdmin = await AdminService.getAdminById(targetAdminId);
+            if (!targetAdmin) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'Admin non trouvé'
+                });
+            }
+
+            if (currentUser.role === 'admin') {
+                // Les admins ne peuvent modifier que les enseignants de leur école
+                if (targetAdmin.ecole?.toString() !== currentUser.ecole?.toString() || 
+                    targetAdmin.role !== 'enseignant') {
+                    return res.status(403).json({
+                        success: false,
+                        message: 'Accès refusé. Vous ne pouvez modifier que le statut des enseignants de votre école.'
+                    });
+                }
+            }
+            // Les super_admins peuvent modifier n'importe qui (déjà vérifié l'auto-modification plus haut)
+
+            // Mettre à jour le statut
+            const updatedAdmin = await AdminService.updateAdmin(targetAdminId, { statut });
+
+            return res.status(200).json({
+                success: true,
+                message: `Statut de l'administrateur mis à jour avec succès`,
+                data: {
+                    id: updatedAdmin._id,
+                    nom: updatedAdmin.nom,
+                    prenom: updatedAdmin.prenom,
+                    email: updatedAdmin.email,
+                    role: updatedAdmin.role,
+                    ancienStatut: targetAdmin.statut,
+                    nouveauStatut: updatedAdmin.statut,
+                    modifiePar: currentUser.email,
+                    dateModification: new Date().toISOString()
+                }
+            });
+
+        } catch (error) {
+            console.error('Erreur lors de la mise à jour du statut:', error);
+            return res.status(500).json({
+                success: false,
+                message: 'Erreur lors de la mise à jour du statut',
+                error: error.message
+            });
+        }
     }
-},
 };
-
-
-
 
 module.exports = AdminController;
