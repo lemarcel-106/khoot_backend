@@ -5,6 +5,9 @@ const checkRequiredFields = require('../../middleware/checkRequiredFields');
 const { authenticate, requireEcoleAccess } = require('../../utils/middlewares/authMiddleware');
 const { checkSubscriptionLimits } = require('../../middleware/subscriptionLimitsMiddleware');
 
+// ===============================================
+// ROUTES EXISTANTES
+// ===============================================
 
 // Routes principales
 router.post('/add-apprenant', 
@@ -63,7 +66,6 @@ router.get('/apprenant/:id/statistiques',
     requireEcoleAccess,
     apprenantController.getStatistiquesApprenant
 );
-
 
 // ===============================================
 // NOUVELLES ROUTES POUR LES APPRENANTS INVITÉS
@@ -280,5 +282,233 @@ router.post('/apprenants/maintenance/cleanup-invites',
     }
 );
 
+/**
+ * Obtenir un résumé détaillé d'un apprenant (invité ou école)
+ * GET /api/apprenants/:id/resume
+ */
+router.get('/apprenants/:id/resume', 
+    authenticate,
+    requireEcoleAccess,
+    async (req, res) => {
+        try {
+            const apprenantService = require('../../services/apprenantService');
+            const { id } = req.params;
+
+            // Récupérer l'apprenant avec toutes ses relations
+            const apprenant = await apprenantService.getById(id);
+
+            // Récupérer les statistiques de participation si disponibles
+            const Participant = require('../../models/Participant');
+            const participations = await Participant.find({ apprenant: id })
+                .populate('planification', 'titre date')
+                .sort({ date: -1 })
+                .limit(5);
+
+            const resume = {
+                apprenant: apprenant,
+                statistiques: {
+                    nombreParticipations: participations.length,
+                    scoreTotal: participations.reduce((sum, p) => sum + (p.score || 0), 0),
+                    scoreMoyen: participations.length > 0 
+                        ? Math.round(participations.reduce((sum, p) => sum + (p.score || 0), 0) / participations.length)
+                        : 0
+                },
+                dernieresParticipations: participations.slice(0, 3)
+            };
+
+            res.json({
+                success: true,
+                data: resume,
+                message: 'Résumé de l\'apprenant récupéré avec succès'
+            });
+        } catch (error) {
+            console.error('❌ Erreur resume apprenant:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Erreur lors de la récupération du résumé',
+                error: error.message
+            });
+        }
+    }
+);
+
+/**
+ * Activer/Désactiver un apprenant
+ * POST /api/apprenants/:id/toggle-status
+ */
+router.post('/apprenants/:id/toggle-status', 
+    authenticate,
+    requireEcoleAccess,
+    async (req, res) => {
+        try {
+            const apprenantService = require('../../services/apprenantService');
+            const { id } = req.params;
+
+            const apprenant = await apprenantService.getById(id);
+            const nouvelEtat = !apprenant.actif;
+
+            const updatedApprenant = await apprenantService.update(id, { actif: nouvelEtat });
+
+            res.json({
+                success: true,
+                message: `Apprenant ${nouvelEtat ? 'activé' : 'désactivé'} avec succès`,
+                data: updatedApprenant
+            });
+        } catch (error) {
+            console.error('❌ Erreur toggle status apprenant:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Erreur lors du changement de statut',
+                error: error.message
+            });
+        }
+    }
+);
+
+/**
+ * Exporter la liste des apprenants (CSV)
+ * GET /api/apprenants/export/csv
+ */
+router.get('/apprenants/export/csv', 
+    authenticate,
+    requireEcoleAccess,
+    async (req, res) => {
+        try {
+            const apprenantService = require('../../services/apprenantService');
+            
+            // Données admin pour filtrage
+            const adminData = {
+                id: req.user.id,
+                role: req.user.role,
+                ecole: req.user.ecole
+            };
+
+            const apprenants = await apprenantService.getAll(adminData);
+
+            // Générer le CSV
+            const csvHeader = 'Matricule,Nom,Prenom,Pseudonyme,Type,Email,Telephone,Ecole,Statut,Date Creation\n';
+            const csvRows = apprenants.map(a => {
+                return [
+                    a.matricule || '',
+                    a.nom || '',
+                    a.prenom || '',
+                    a.pseudonyme || '',
+                    a.typeApprenant || '',
+                    a.email || '',
+                    a.phone || '',
+                    a.ecole?.libelle || '',
+                    a.actif ? 'Actif' : 'Inactif',
+                    new Date(a.date).toLocaleDateString('fr-FR')
+                ].map(field => `"${field}"`).join(',');
+            }).join('\n');
+
+            const csvContent = csvHeader + csvRows;
+
+            res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+            res.setHeader('Content-Disposition', `attachment; filename="apprenants_${new Date().toISOString().split('T')[0]}.csv"`);
+            res.send('\ufeff' + csvContent); // BOM pour Excel
+        } catch (error) {
+            console.error('❌ Erreur export CSV:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Erreur lors de l\'export CSV',
+                error: error.message
+            });
+        }
+    }
+);
+
+/**
+ * Dupliquer un apprenant invité (créer une copie)
+ * POST /api/apprenants/:id/duplicate
+ */
+router.post('/apprenants/:id/duplicate', 
+    authenticate,
+    requireEcoleAccess,
+    async (req, res) => {
+        try {
+            const apprenantService = require('../../services/apprenantService');
+            const { id } = req.params;
+
+            // Récupérer l'apprenant original
+            const originalApprenant = await apprenantService.getById(id);
+            
+            if (originalApprenant.typeApprenant !== 'invite') {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Seuls les apprenants invités peuvent être dupliqués'
+                });
+            }
+
+            // Créer une copie avec un nouveau pseudonyme
+            const duplicateData = {
+                nom: originalApprenant.nom,
+                prenom: originalApprenant.prenom,
+                pseudonyme: `${originalApprenant.pseudonyme}_copie_${Date.now()}`,
+                avatar: originalApprenant.avatar,
+                ecole: originalApprenant.ecole
+            };
+
+            const duplicate = await apprenantService.create(duplicateData, 'invite');
+
+            res.status(201).json({
+                success: true,
+                message: 'Apprenant invité dupliqué avec succès',
+                data: duplicate
+            });
+        } catch (error) {
+            console.error('❌ Erreur duplicate apprenant:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Erreur lors de la duplication',
+                error: error.message
+            });
+        }
+    }
+);
+
+/**
+ * Obtenir les apprenants récemment créés
+ * GET /api/apprenants/recent
+ */
+router.get('/apprenants/recent', 
+    authenticate,
+    requireEcoleAccess,
+    async (req, res) => {
+        try {
+            const apprenantService = require('../../services/apprenantService');
+            const limit = parseInt(req.query.limit) || 10;
+            
+            // Données admin pour filtrage
+            const adminData = {
+                id: req.user.id,
+                role: req.user.role,
+                ecole: req.user.ecole
+            };
+
+            // Récupérer les apprenants récents
+            const recentApprenants = await apprenantService.getAll(adminData);
+            
+            // Trier par date de création (plus récents en premier) et limiter
+            const sortedRecent = recentApprenants
+                .sort((a, b) => new Date(b.date) - new Date(a.date))
+                .slice(0, limit);
+
+            res.json({
+                success: true,
+                data: sortedRecent,
+                total: sortedRecent.length,
+                message: `${sortedRecent.length} apprenants récents récupérés`
+            });
+        } catch (error) {
+            console.error('❌ Erreur apprenants récents:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Erreur lors de la récupération des apprenants récents',
+                error: error.message
+            });
+        }
+    }
+);
 
 module.exports = router;

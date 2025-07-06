@@ -97,4 +97,43 @@ ApprenantSchema.methods.estInvite = function() {
     return this.typeApprenant === 'invite';
 };
 
+// Méthode statique pour obtenir les apprenants par type
+ApprenantSchema.statics.getByType = function(type, filter = {}) {
+    return this.find({ typeApprenant: type, actif: true, ...filter })
+        .populate('avatar')
+        .populate('ecole')
+        .sort({ nom: 1, prenom: 1 });
+};
+
+// Méthode statique pour obtenir les invités
+ApprenantSchema.statics.getInvites = function(ecoleId = null) {
+    const filter = { typeApprenant: 'invite', actif: true };
+    if (ecoleId) {
+        filter.ecole = ecoleId;
+    }
+    return this.find(filter)
+        .populate('avatar')
+        .populate('ecole')
+        .sort({ pseudonyme: 1 });
+};
+
+// Méthode statique pour rechercher des apprenants
+ApprenantSchema.statics.search = function(term, filter = {}) {
+    const searchFilter = {
+        actif: true,
+        ...filter,
+        $or: [
+            { nom: { $regex: term, $options: 'i' } },
+            { prenom: { $regex: term, $options: 'i' } },
+            { pseudonyme: { $regex: term, $options: 'i' } },
+            { matricule: { $regex: term, $options: 'i' } }
+        ]
+    };
+
+    return this.find(searchFilter)
+        .populate('avatar')
+        .populate('ecole')
+        .sort({ nom: 1, prenom: 1 });
+};
+
 module.exports = mongoose.model("Apprenant", ApprenantSchema);
