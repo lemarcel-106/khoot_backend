@@ -8099,3 +8099,10 @@
 {"level":"error","message":"HTTP Error: 2025-07-06T23:01:55.476Z [ERROR] POST /api/planification 400 - 295 bytes - IP: ::1 - User-Agent: PostmanRuntime/7.44.0","timestamp":"2025-07-06T23:01:55.478Z"}
 {"level":"error","message":"HTTP Error: 2025-07-07T00:49:55.653Z [ERROR] POST /api/planification 400 - 295 bytes - IP: ::1 - User-Agent: PostmanRuntime/7.44.0","timestamp":"2025-07-07T00:49:55.653Z"}
 {"level":"error","message":"HTTP Error: 2025-07-07T00:50:10.844Z [ERROR] POST /api/planification 500 - 79 bytes - IP: ::1 - User-Agent: PostmanRuntime/7.44.0","timestamp":"2025-07-07T00:50:10.844Z"}
+{"level":"error","message":"HTTP Error: 2025-07-07T01:47:49.535Z [ERROR] POST /api/planification 400 - 71 bytes - IP: ::1 - User-Agent: PostmanRuntime/7.44.0","timestamp":"2025-07-07T01:47:49.535Z"}
+{"level":"error","message":"HTTP Error: 2025-07-07T01:55:35.924Z [ERROR] GET /api/planification/685bc5ca96d53f82e6d7688f 404 - 56 bytes - IP: ::1 - User-Agent: PostmanRuntime/7.44.0","timestamp":"2025-07-07T01:55:35.924Z"}
+{"level":"error","message":"HTTP Error: 2025-07-07T02:00:35.747Z [ERROR] GET /api/planification 404 - 67 bytes - IP: ::1 - User-Agent: PostmanRuntime/7.44.0","timestamp":"2025-07-07T02:00:35.747Z"}
+{"level":"error","message":"HTTP Error: 2025-07-07T02:00:37.820Z [ERROR] GET /api/planification 404 - 67 bytes - IP: ::1 - User-Agent: PostmanRuntime/7.44.0","timestamp":"2025-07-07T02:00:37.820Z"}
+{"level":"error","message":"HTTP Error: 2025-07-07T02:05:53.996Z [ERROR] POST /api/planifications 404 - 68 bytes - IP: ::1 - User-Agent: PostmanRuntime/7.44.0","timestamp":"2025-07-07T02:05:53.996Z"}
+{"level":"error","message":"HTTP Error: 2025-07-07T02:06:07.743Z [ERROR] GET /api/planifications' 404 - 69 bytes - IP: ::1 - User-Agent: PostmanRuntime/7.44.0","timestamp":"2025-07-07T02:06:07.743Z"}
+{"level":"error","message":"HTTP Error: 2025-07-07T02:06:11.560Z [ERROR] GET /api/planifications' 404 - 69 bytes - IP: ::1 - User-Agent: PostmanRuntime/7.44.0","timestamp":"2025-07-07T02:06:11.560Z"}
