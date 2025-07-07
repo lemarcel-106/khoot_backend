@@ -90,46 +90,79 @@ const reponseService = {
         }
     },
 
-    // ✅ CORRIGÉ: Créer une réponse avec validation
-    createReponse: async (userData) => {
+
+    createReponse: async (reponseData) => {
         try {
-            // Validation des données
-            const validation = reponseService.validateReponseData(userData);
-            if (!validation.isValid) {
-                throw new Error('Données invalides: ' + validation.errors.join(', '));
+            console.log('Service: Création réponse avec données:', reponseData);
+            
+            // Vérifier que la question existe
+            const questionExists = await Question.findById(reponseData.question);
+            if (!questionExists) {
+                throw new Error(`Question avec ID ${reponseData.question} introuvable`);
             }
-
-            // Création de la réponse
-            const newReponse = new Reponse(userData);
-            const savedReponse = await newReponse.save();
-
-            // Ajout de la réponse à la question
-            await reponseService.addReponseToQuestion(savedReponse._id, userData.question);
-
-            // Retourner la réponse avec tous les détails
-            return await Reponse.findById(savedReponse._id)
-                .populate({
-                    path: 'question',
-                    select: 'libelle typeQuestion point',
-                    populate: [
-                        {
-                            path: 'typeQuestion',
-                            select: 'libelle description reference'
-                        },
-                        {
-                            path: 'point',
-                            select: 'nature valeur description'
-                        }
-                    ]
-                })
-                .lean();
+            
+            // Créer la réponse
+            const nouvellereponse = new Reponse(reponseData);
+            const reponseSauvegardee = await nouvellereponse.save();
+            
+            console.log('Service: Réponse créée:', reponseSauvegardee);
+            
+            // Ajouter la réponse à la question
+            await Question.findByIdAndUpdate(
+                reponseData.question,
+                { $push: { reponses: reponseSauvegardee._id } }
+            );
+            
+            return reponseSauvegardee;
+            
         } catch (error) {
-            throw new Error('Erreur lors de la création de la réponse : ' + error.message);
+            console.error('Service: Erreur création réponse:', error);
+            throw error;
         }
     },
 
+
+    // ✅ CORRIGÉ: Créer une réponse avec validation
+    // createReponse: async (userData) => {
+    //     try {
+    //         // Validation des données
+    //         const validation = reponseService.validateReponseData(userData);
+    //         if (!validation.isValid) {
+    //             throw new Error('Données invalides: ' + validation.errors.join(', '));
+    //         }
+
+    //         // Création de la réponse
+    //         const newReponse = new Reponse(userData);
+    //         const savedReponse = await newReponse.save();
+
+    //         // Ajout de la réponse à la question
+    //         await reponseService.addReponseToQuestion(savedReponse._id, userData.question);
+
+    //         // Retourner la réponse avec tous les détails
+    //         return await Reponse.findById(savedReponse._id)
+    //             .populate({
+    //                 path: 'question',
+    //                 select: 'libelle typeQuestion point',
+    //                 populate: [
+    //                     {
+    //                         path: 'typeQuestion',
+    //                         select: 'libelle description reference'
+    //                     },
+    //                     {
+    //                         path: 'point',
+    //                         select: 'nature valeur description'
+    //                     }
+    //                 ]
+    //             })
+    //             .lean();
+    //     } catch (error) {
+    //         throw new Error('Erreur lors de la création de la réponse : ' + error.message);
+    //     }
+    // },
+
     // ✅ CORRIGÉ: Récupérer une réponse par ID avec tous les détails
     getReponseById: async (reponseId) => {
+    
         try {
             const reponse = await Reponse.findById(reponseId)
                 .populate({

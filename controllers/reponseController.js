@@ -36,19 +36,50 @@ exports.getAllReponses = async (req, res) => {
     }
 };
 
+// ========================================
+// 2. CONTRÔLEUR MODIFIÉ - reponseController.js
+// ========================================
+
+// controllers/reponseController.js - VERSION CORRIGÉE
+
 exports.createReponse = async (req, res) => {
     try {
-        // ✅ AJOUT: Validation côté contrôleur (accepte true/false et 0/1)
-        const { etat, question } = req.body;
+        console.log('Données reçues pour création réponse:', req.body);
         
+        // ✅ VALIDATION côté contrôleur avec logs détaillés
+        const { etat, question, reponse_texte, file } = req.body;
+        
+        // Validation de l'état avec conversion
+        let etatNormalise;
         const validValues = [0, 1, true, false, '0', '1', 'true', 'false'];
-        if (etat !== undefined && !validValues.includes(etat)) {
+        
+        if (etat === undefined || etat === null) {
             return res.status(400).json({
                 success: false,
-                message: 'L\'état doit être 0, 1, true ou false'
+                message: 'Le champ "etat" est requis'
             });
         }
         
+        if (!validValues.includes(etat)) {
+            return res.status(400).json({
+                success: false,
+                message: 'L\'état doit être 0, 1, true ou false',
+                valeurRecue: etat,
+                typeRecu: typeof etat,
+                valeursAcceptees: validValues
+            });
+        }
+        
+        // Conversion de l'état en nombre
+        if (etat === true || etat === 'true' || etat === '1') {
+            etatNormalise = 1;
+        } else if (etat === false || etat === 'false' || etat === '0') {
+            etatNormalise = 0;
+        } else {
+            etatNormalise = parseInt(etat);
+        }
+        
+        // Validation de l'ID de question
         if (!question) {
             return res.status(400).json({
                 success: false,
@@ -56,22 +87,40 @@ exports.createReponse = async (req, res) => {
             });
         }
         
-        const reponse = await reponseService.createReponse(req.body);
+        // Validation du contenu (au moins texte ou fichier)
+        if (!reponse_texte && !file) {
+            return res.status(400).json({
+                success: false,
+                message: 'Au moins un contenu de réponse (texte ou fichier) est requis'
+            });
+        }
+        
+        // Préparer les données normalisées
+        const reponseData = {
+            ...req.body,
+            etat: etatNormalise
+        };
+        
+        console.log('Données normalisées:', reponseData);
+        
+        const reponse = await reponseService.createReponse(reponseData);
         
         res.status(201).json({
             success: true,
             message: 'Réponse créée avec succès',
             data: {
-                ...reponse,
+                ...reponse.toObject(),
                 etat_lisible: reponse.etat === 1 ? 'Correct' : 'Incorrect',
                 isCorrect: reponse.etat === 1
             }
         });
     } catch (err) {
+        console.error('Erreur création réponse:', err);
         res.status(500).json({
             success: false,
             message: 'Erreur lors de la création de la réponse',
-            error: err.message
+            error: err.message,
+            details: err.stack
         });
     }
 };

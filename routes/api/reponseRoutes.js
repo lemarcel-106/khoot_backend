@@ -8,6 +8,53 @@ const authenticateToken = require('../../middleware/authenticateToken');
 // ===============================================
 // ROUTES CRUD PRINCIPALES
 // ===============================================
+// routes/api/reponseRoutes.js - VERSION CORRIGÉE
+
+// ✅ MIDDLEWARE PERSONNALISÉ pour validation réponse
+const validateReponseCreation = (req, res, next) => {
+    console.log('Validation des données reçues:', req.body);
+    
+    const { question, etat } = req.body;
+    const errors = [];
+    
+    // Vérifier question
+    if (!question) {
+        errors.push('question');
+    }
+    
+    // Vérifier etat avec plus de flexibilité
+    if (etat === undefined || etat === null) {
+        errors.push('etat');
+    }
+    
+    if (errors.length > 0) {
+        return res.status(400).json({
+            success: false,
+            message: 'Champs requis manquants',
+            champsManquants: errors,
+            donneesRecues: req.body,
+            formatAttendu: {
+                question: "ID de la question MongoDB",
+                etat: "true/false ou 0/1",
+                reponse_texte: "Texte de la réponse (optionnel)",
+                file: "Chemin fichier (optionnel)"
+            }
+        });
+    }
+    
+    next();
+};
+
+/**
+ * Créer une nouvelle réponse
+ * CHAMPS REQUIS : question, etat
+ * CHAMPS OPTIONNELS : reponse_texte, file
+ */
+router.post('/reponse', 
+    validateReponseCreation,  // ✅ Utilise notre middleware personnalisé
+    reponseController.createReponse
+);
+
 
 /**
  * Récupérer toutes les réponses
@@ -26,10 +73,10 @@ router.get('/reponse/:id', reponseController.getReponseById);
  * CHAMPS REQUIS : question, etat
  * CHAMPS OPTIONNELS : reponse_texte, file
  */
-router.post('/reponse', 
-    checkRequiredFields(['question', 'etat']), 
-    reponseController.createReponse
-);
+// router.post('/reponse', 
+//     checkRequiredFields(['question', 'etat']), 
+//     reponseController.createReponse
+// );
 
 /**
  * Mettre à jour une réponse existante
