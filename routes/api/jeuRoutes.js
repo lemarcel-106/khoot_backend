@@ -113,7 +113,7 @@ router.post('/jeux',
  * - Admins: Jeux des enseignants de leur école
  * - Super_admins: Tous les jeux
  */
-router.put('/jeux/update/:id', 
+router.post('/jeux/update/:id', 
     authenticate,  // ✅ Vérifie automatiquement l'auth + statut actif
     uploadImage.single('image'),
     jeuController.updateJeu

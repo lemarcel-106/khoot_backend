@@ -25,7 +25,7 @@ router.post('/apprenant/matricule',
 router.post('/apprenants', 
     authenticate,
     checkSubscriptionLimits('apprenants'), // ✅ AJOUT : Contrôle des limites
-    checkRequiredFields(['nom', 'prenom', 'avatar']),
+    checkRequiredFields(['nom', 'prenom']),
     apprenantController.createApprenant
 );
 
